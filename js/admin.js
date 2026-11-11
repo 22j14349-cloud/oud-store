@@ -32,13 +32,27 @@ function printHTML(html) {
 async function init() {
   if (DEMO) { $('#demo').classList.remove('hidden'); $('#demoReset').classList.remove('hidden'); }
   $('#loginMark').innerHTML = icon('logo'); $('#appMark').innerHTML = icon('logo');
-  const settings = S.settingsReady = db.getSettings().then(v => { S.settings = v; setShopName(); }).catch(e => toast('تعذر الاتصال بقاعدة البيانات: ' + e.message, 'bad'));
+  setShopName();
+  S.settingsReady = loadSettings();
   S.role = await db.currentRole().catch(() => null);
-  if (S.role) { await settings; startApp(); } else showLogin();
+  S.role ? safeStart() : showLogin();
+}
+// يحمّل إعدادات المحل مع إعادة المحاولة؛ يحدد S.settingsLoaded حتى لا يُحفظ نموذج فارغ فوق البيانات الحقيقية
+async function loadSettings() {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const v = await db.getSettings();
+      if (v) { S.settings = v; S.settingsLoaded = true; setShopName(); return; }
+    } catch (e) { if (i === 2) toast('تعذر الاتصال بقاعدة البيانات: ' + e.message, 'bad'); }
+    await new Promise(r => setTimeout(r, 1500));
+  }
 }
 function setShopName() {
-  const n = S.settings.shop_name || 'عطور سمائل';
+  const n = (S.settings && S.settings.shop_name) || 'عطور سمائل';
   $('#loginShop').textContent = n; $('#appShop').textContent = n;
+}
+function safeStart() {
+  startApp().catch(e => { console.error(e); toast('حدث خطأ أثناء فتح اللوحة، أعد تحميل الصفحة: ' + e.message, 'bad'); });
 }
 
 function showLogin() {
@@ -48,7 +62,7 @@ function showLogin() {
   $('#loginForm').onsubmit = async e => {
     e.preventDefault();
     const btn = e.target.querySelector('button'); btn.disabled = true;
-    try { S.role = await db.login(role, $('#pw').value); $('#pw').value = ''; startApp(); }
+    try { S.role = await db.login(role, $('#pw').value); $('#pw').value = ''; safeStart(); }
     catch (er) { toast(er.message.includes('Invalid') ? 'كلمة المرور غير صحيحة' : er.message, 'bad'); }
     btn.disabled = false;
   };
@@ -408,6 +422,7 @@ function setupSettings() {
   $('#sWa').value = s.whatsapp || ''; $('#sNote').value = s.store_note || '';
   $('#setForm').onsubmit = async e => {
     e.preventDefault();
+    if (!S.settingsLoaded) { toast('لم تُحمّل الإعدادات الحالية بعد، أعد تحميل الصفحة ثم حاول مرة أخرى', 'bad'); return; }
     const phone = $('#sPhone').value.replace(/\D/g, '').replace(/^968(?=\d{8}$)/, '');
     if (phone && !/^[79]\d{7}$/.test(phone)) { toast('رقم الهاتف يجب أن يكون 8 أرقام ويبدأ بـ 7 أو 9', 'bad'); return; }
     try {

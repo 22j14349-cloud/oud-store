@@ -238,7 +238,12 @@ create policy "product images admin write" on storage.objects for all to authent
   using (bucket_id = 'products' and public.my_role() = 'admin')
   with check (bucket_id = 'products' and public.my_role() = 'admin');
 create policy "receipts upload" on storage.objects for insert to anon, authenticated
-  with check (bucket_id = 'receipts');
+  with check (bucket_id = 'receipts' and name ~ '^[0-9]{4,12}-[0-9a-f-]{36}\.jpg$');
+-- حد أقصى 3 ميغابايت للإيصال، وصور فقط
+update storage.buckets set file_size_limit = 3145728, allowed_mime_types = array['image/jpeg','image/png','image/webp']
+  where id = 'receipts';
+update storage.buckets set file_size_limit = 3145728, allowed_mime_types = array['image/jpeg','image/png','image/webp']
+  where id = 'products';
 create policy "receipts staff read" on storage.objects for select to authenticated
   using (bucket_id = 'receipts' and public.my_role() is not null);
 
