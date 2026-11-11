@@ -150,3 +150,14 @@ textarea { min-height: 80px; resize: vertical; }
 }
 input[type=file] { padding: .5em; }
 input[type=file]::file-selector-button { font: 700 .9rem var(--font); color: #1b1007; background: linear-gradient(135deg, var(--gold-2), var(--gold)); border: 0; border-radius: 999px; padding: .5em 1em; margin-inline-end: 10px; cursor: pointer; }
+
+/* ---------- الشاشة الافتتاحية للتطبيق المثبت ---------- */
+.splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, #3a2616, #0f0906 70%); transition: opacity .6s; }
+.splash.out { opacity: 0; pointer-events: none; }
+.splash-in { text-align: center; animation: pop .7s; }
+.splash img { width: 132px; height: 132px; border-radius: 30px; margin: 0 auto 18px; box-shadow: 0 0 60px rgba(210, 168, 85, .35); }
+.splash h1 { font-size: 2.2rem; color: var(--gold-2); margin: 0; }
+.splash p { color: var(--muted); margin: 6px 0 0; }
+.install-btn { font-size: .85rem; padding: .5em .9em; }
+@media print { .splash { display: none !important; } }
+.modal > .modal-x + h2, .modal > .modal-x + div h2:first-child { padding-inline-start: 44px; }

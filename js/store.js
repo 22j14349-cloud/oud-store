@@ -1,4 +1,5 @@
 import { db, DEMO } from './db.js';
+import { splash, installButton, rememberShopName } from './pwa.js';
 import { CATEGORIES, catById, money, esc, $, $$, toast, icon, productVisual, openModal } from './util.js';
 
 const HERO_ART = `<svg viewBox="0 0 400 400" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -28,6 +29,7 @@ const cartItems = () => Object.entries(state.cart).map(([id, qty]) => ({ p: stat
 const cartTotal = () => cartItems().reduce((s, x) => s + x.p.price * x.qty, 0);
 
 async function init() {
+  splash('store'); installButton($('#installBtn'));
   if (DEMO) $('#demo').classList.remove('hidden');
   $('#brandMark').innerHTML = icon('logo');
   $('#brandMark2').innerHTML = icon('logo');
@@ -41,7 +43,7 @@ async function init() {
     [state.settings, state.products] = await Promise.all([db.getSettings(), db.listProducts()]);
   } catch (e) { toast('تعذر تحميل المنتجات: ' + e.message, 'bad'); }
   const name = state.settings.shop_name || 'عطور سمائل';
-  $('#shopName').textContent = name; $('#footName').textContent = name;
+  $('#shopName').textContent = name; $('#footName').textContent = name; rememberShopName(state.settings.shop_name);
   document.title = `${name} | عطور وبخور ولبان عُماني`;
   $('#storeNote').textContent = state.settings.store_note || '';
   // تنظيف السلة من منتجات لم تعد متوفرة

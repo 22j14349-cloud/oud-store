@@ -7,8 +7,12 @@
   <meta name="theme-color" content="#1a110b">
   <meta name="robots" content="noindex">
   <link rel="manifest" href="manifest-admin.webmanifest">
-  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="img/icon-192.png">
+  <link rel="icon" href="img/icon-admin-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="img/icon-admin-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="محاسبة المحل">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -33,6 +37,7 @@
         <div class="field"><label for="pw">كلمة المرور</label><input id="pw" type="password" autocomplete="current-password" required></div>
         <button class="btn btn-gold btn-block">دخول</button>
       </form>
+      <button class="btn btn-ghost btn-block install-btn hidden" id="installBtn2" style="margin-top:10px">ثبّت التطبيق على الجوال</button>
     </div>
   </section>
 
@@ -42,6 +47,7 @@
       <div class="abar-in">
         <div class="brand-s"><span id="appMark"></span><b id="appShop">عطور سمائل</b></div>
         <div class="abar-end">
+          <button class="btn btn-ghost btn-sm install-btn hidden" id="installBtn">ثبّت التطبيق</button>
           <span class="badge" id="whoami"></span>
           <a class="btn btn-ghost btn-sm" href="index.html" target="_blank">المتجر</a>
           <button class="btn btn-ghost btn-sm" id="logout">خروج</button>

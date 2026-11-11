@@ -1,4 +1,5 @@
 import { db, DEMO } from './db.js';
+import { splash, installButton, rememberShopName } from './pwa.js';
 import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask } from './util.js';
 
 const S = { role: null, settings: {}, products: [], cart: new Map(), pay: 'cash', scanner: null, lastScan: { code: '', t: 0 },
@@ -30,6 +31,7 @@ function printHTML(html) {
 
 // ------------------------------------------------------------ الدخول
 async function init() {
+  splash('admin'); installButton($('#installBtn')); installButton($('#installBtn2'));
   if (DEMO) { $('#demo').classList.remove('hidden'); $('#demoReset').classList.remove('hidden'); }
   $('#loginMark').innerHTML = icon('logo'); $('#appMark').innerHTML = icon('logo');
   setShopName();
@@ -42,7 +44,7 @@ async function loadSettings() {
   for (let i = 0; i < 3; i++) {
     try {
       const v = await db.getSettings();
-      if (v) { S.settings = v; S.settingsLoaded = true; setShopName(); return; }
+      if (v) { S.settings = v; S.settingsLoaded = true; setShopName(); rememberShopName(v.shop_name); return; }
     } catch (e) { if (i === 2) toast('تعذر الاتصال بقاعدة البيانات: ' + e.message, 'bad'); }
     await new Promise(r => setTimeout(r, 1500));
   }

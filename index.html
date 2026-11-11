@@ -7,8 +7,12 @@
   <meta name="description" content="عطور، أدهان، بخور ولبان عُماني أصيل من سمائل. اطلب من جوالك وادفع بالتحويل البنكي على رقم الهاتف.">
   <meta name="theme-color" content="#1a110b">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="img/icon-192.png">
+  <link rel="icon" href="img/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="img/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="عطور سمائل">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -24,10 +28,11 @@
         <span class="brand-mark" id="brandMark"></span>
         <span><b id="shopName">عطور سمائل</b><small>عطور · أدهان · بخور · لبان عُماني</small></span>
       </a>
+      <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost install-btn hidden" id="installBtn">ثبّت التطبيق</button>
       <button class="btn btn-ghost cart-btn" id="cartBtn" aria-label="السلة">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
         <span class="cart-count" id="cartCount">0</span>
-      </button>
+      </button></div>
     </div>
   </header>
 
