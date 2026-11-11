@@ -32,10 +32,9 @@ function printHTML(html) {
 async function init() {
   if (DEMO) { $('#demo').classList.remove('hidden'); $('#demoReset').classList.remove('hidden'); }
   $('#loginMark').innerHTML = icon('logo'); $('#appMark').innerHTML = icon('logo');
-  try { S.settings = await db.getSettings(); } catch (e) { toast(e.message, 'bad'); }
-  setShopName();
+  const settings = S.settingsReady = db.getSettings().then(v => { S.settings = v; setShopName(); }).catch(e => toast('تعذر الاتصال بقاعدة البيانات: ' + e.message, 'bad'));
   S.role = await db.currentRole().catch(() => null);
-  S.role ? startApp() : showLogin();
+  if (S.role) { await settings; startApp(); } else showLogin();
 }
 function setShopName() {
   const n = S.settings.shop_name || 'عطور سمائل';
@@ -56,6 +55,7 @@ function showLogin() {
 }
 
 async function startApp() {
+  await S.settingsReady;
   $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   const admin = S.role === 'admin';
   $('#whoami').textContent = admin ? 'صاحب المحل' : 'الموظف';
