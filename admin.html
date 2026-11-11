@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>لوحة المحل | المحاسبة والمبيعات</title>
+  <meta name="theme-color" content="#1a110b">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="manifest-admin.webmanifest">
+  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="img/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div id="demo" class="demo-banner hidden">وضع تجريبي · كلمة مرور صاحب المحل: admin123 · الموظف: user123</div>
+
+  <!-- شاشة الدخول -->
+  <section id="login" class="login hidden">
+    <div class="smoke"><span></span><span></span><span></span></div>
+    <div class="login-card card">
+      <div class="login-mark" id="loginMark"></div>
+      <h1 id="loginShop">عطور سمائل</h1>
+      <p class="muted">لوحة المحاسبة والمبيعات</p>
+      <div class="roles">
+        <button class="role on" data-r="employee"><b>الموظف</b><small>البيع والطلبات</small></button>
+        <button class="role" data-r="admin"><b>صاحب المحل</b><small>كل الصلاحيات</small></button>
+      </div>
+      <form id="loginForm">
+        <div class="field"><label for="pw">كلمة المرور</label><input id="pw" type="password" autocomplete="current-password" required></div>
+        <button class="btn btn-gold btn-block">دخول</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- التطبيق -->
+  <div id="app" class="hidden">
+    <header class="abar">
+      <div class="abar-in">
+        <div class="brand-s"><span id="appMark"></span><b id="appShop">عطور سمائل</b></div>
+        <div class="abar-end">
+          <span class="badge" id="whoami"></span>
+          <a class="btn btn-ghost btn-sm" href="index.html" target="_blank">المتجر</a>
+          <button class="btn btn-ghost btn-sm" id="logout">خروج</button>
+        </div>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button data-t="pos" class="on"><svg viewBox="0 0 24 24"><path d="M3 5v14M6 5v14M10 5v14M13 5v14M17 5v14M21 5v14"/></svg><span>البيع</span></button>
+      <button data-t="orders"><svg viewBox="0 0 24 24"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg><span>الطلبات</span><i class="dot hidden" id="ordersDot"></i></button>
+      <button data-t="products" data-admin><svg viewBox="0 0 24 24"><path d="M10 3h4v3h-4z"/><path d="M10 6v2c-3 1-5 4-5 7v3c0 2 1 3 3 3h8c2 0 3-1 3-3v-3c0-3-2-6-5-7V6"/></svg><span>المنتجات</span></button>
+      <button data-t="stats" data-admin><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>الإحصائيات</span></button>
+      <button data-t="settings" data-admin><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg><span>الإعدادات</span></button>
+    </nav>
+
+    <main class="amain">
+      <!-- البيع -->
+      <section data-view="pos" class="view">
+        <div class="pos">
+          <div class="pos-left">
+            <div class="card pad">
+              <div class="scan-head">
+                <h2>مسح الباركود</h2>
+                <button class="btn btn-gold btn-sm" id="camBtn">تشغيل الكاميرا</button>
+              </div>
+              <div id="reader" class="reader hidden"></div>
+              <form id="codeForm" class="code-form">
+                <input id="code" inputmode="numeric" placeholder="أدخل الباركود أو استخدم قارئ الباركود" autocomplete="off">
+                <button class="btn btn-ghost">إضافة</button>
+              </form>
+              <input id="psearch" type="search" placeholder="أو ابحث باسم المنتج…" autocomplete="off">
+              <div id="presults" class="presults"></div>
+            </div>
+          </div>
+          <div class="pos-right card pad">
+            <div class="scan-head"><h2>الفاتورة</h2><button class="btn btn-ghost btn-sm" id="clearCart">تفريغ</button></div>
+            <div id="lines" class="lines"></div>
+            <div class="total-row"><span>الإجمالي</span><b class="num" id="posTotal">0.000 ر.ع.</b></div>
+            <div class="field"><div class="seg" id="payM"><button class="on" data-v="cash">نقداً</button><button data-v="transfer">تحويل</button><button data-v="card">بطاقة</button></div></div>
+            <button class="btn btn-gold btn-block" id="checkout">إتمام البيع</button>
+            <div id="todayMine" class="muted small-note"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- الطلبات -->
+      <section data-view="orders" class="view hidden">
+        <div class="view-head"><h2>طلبات المتجر</h2>
+          <div class="seg seg-inline" id="ofilter"><button class="on" data-v="new">جديدة</button><button data-v="paid">مؤكدة</button><button data-v="cancelled">ملغاة</button></div>
+        </div>
+        <div id="olist" class="olist"></div>
+      </section>
+
+      <!-- المنتجات -->
+      <section data-view="products" class="view hidden">
+        <div class="view-head"><h2>المنتجات</h2>
+          <div class="head-actions"><button class="btn btn-ghost btn-sm" id="printSel">طباعة ملصقات الباركود</button><button class="btn btn-gold btn-sm" id="addProd">+ منتج جديد</button></div>
+        </div>
+        <div class="filters">
+          <input id="prodSearch" type="search" placeholder="بحث بالاسم أو الباركود">
+          <select id="prodCat"><option value="">كل الأقسام</option></select>
+          <label class="check"><input type="checkbox" id="selAll"> تحديد الكل</label>
+        </div>
+        <div id="plist" class="plist"></div>
+      </section>
+
+      <!-- الإحصائيات -->
+      <section data-view="stats" class="view hidden">
+        <div class="kpis" id="kpis"></div>
+        <div class="card pad chart-card">
+          <div class="view-head"><h2 id="chartTitle">المبيعات</h2>
+            <div class="seg seg-inline" id="period"><button class="on" data-v="day">يومي</button><button data-v="month">شهري</button><button data-v="year">سنوي</button></div>
+          </div>
+          <div class="chart-box"><canvas id="chart" aria-label="رسم المبيعات"></canvas></div>
+        </div>
+        <div class="stats-grid">
+          <div class="card pad"><h3>الأكثر مبيعاً هذا الشهر</h3><div id="top"></div></div>
+          <div class="card pad"><h3>مصدر المبيعات وطرق الدفع (هذا الشهر)</h3><div id="split"></div></div>
+          <div class="card pad"><h3>منتجات قاربت على النفاد</h3><div id="low"></div></div>
+          <div class="card pad"><h3>آخر الفواتير</h3><div id="recent"></div></div>
+        </div>
+      </section>
+
+      <!-- الإعدادات -->
+      <section data-view="settings" class="view hidden">
+        <div class="settings-grid">
+          <form class="card pad" id="setForm">
+            <h2>بيانات المحل والدفع</h2>
+            <div class="field"><label for="sName">اسم المحل</label><input id="sName" required></div>
+            <div class="field"><label for="sPhone">رقم الهاتف لاستلام التحويل البنكي</label><input id="sPhone" inputmode="tel" placeholder="9XXXXXXX"></div>
+            <div class="field"><label for="sAcc">اسم صاحب الحساب (يظهر للزبون)</label><input id="sAcc"></div>
+            <div class="field"><label for="sWa">رقم واتساب المحل (اختياري)</label><input id="sWa" inputmode="tel"></div>
+            <div class="field"><label for="sNote">ملاحظة تظهر أسفل المتجر</label><textarea id="sNote"></textarea></div>
+            <button class="btn btn-gold">حفظ</button>
+          </form>
+          <div class="card pad">
+            <h2>كلمات المرور</h2>
+            <form id="pwAdmin" class="field"><label for="pa">كلمة مرور صاحب المحل الجديدة</label><div class="inline"><input id="pa" type="password" minlength="6" required autocomplete="new-password"><button class="btn btn-ghost">تغيير</button></div></form>
+            <form id="pwEmp" class="field"><label for="pe">كلمة مرور الموظف الجديدة</label><div class="inline"><input id="pe" type="password" minlength="6" required autocomplete="new-password"><button class="btn btn-ghost">تغيير</button></div></form>
+            <div id="demoReset" class="hidden"><hr class="divider"><p class="muted">الوضع التجريبي: يمكنك إعادة البيانات التجريبية إلى وضعها الأول.</p><button class="btn btn-danger btn-sm" id="resetBtn">إعادة البيانات التجريبية</button></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="print-root"></div>
+  <script src="vendor/supabase.js"></script>
+  <script src="vendor/html5-qrcode.min.js"></script>
+  <script src="vendor/JsBarcode.all.min.js"></script>
+  <script src="vendor/chart.umd.js"></script>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>

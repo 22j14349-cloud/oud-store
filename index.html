@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>المتجر | عطور وبخور ولبان عُماني</title>
+  <meta name="description" content="عطور، أدهان، بخور ولبان عُماني أصيل من سمائل. اطلب من جوالك وادفع بالتحويل البنكي على رقم الهاتف.">
+  <meta name="theme-color" content="#1a110b">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="img/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="img/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/store.css">
+</head>
+<body>
+  <div id="demo" class="demo-banner hidden">وضع تجريبي: الطلبات تُحفظ في هذا المتصفح فقط حتى يتم ربط قاعدة البيانات</div>
+
+  <header class="top">
+    <div class="wrap top-in">
+      <a class="brand" href="#">
+        <span class="brand-mark" id="brandMark"></span>
+        <span><b id="shopName">عطور سمائل</b><small>عطور · أدهان · بخور · لبان عُماني</small></span>
+      </a>
+      <button class="btn btn-ghost cart-btn" id="cartBtn" aria-label="السلة">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg>
+        <span class="cart-count" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="smoke"><span></span><span></span><span></span><span></span></div>
+    <div class="wrap hero-in">
+      <p class="ornament"><span>من قلب سمائل</span></p>
+      <h1>عبق عُمان<br><span class="gold">في كل قطرة ودخنة</span></h1>
+      <p class="lead">عطور فاخرة، أدهان عود معتّقة، بخور بيتي، ولبان حوجري من ظفار. اختر ما يعجبك وأرسل طلبك وادفع بالتحويل على رقم الهاتف.</p>
+      <a href="#shop" class="btn btn-gold">تسوّق الآن</a>
+    </div>
+    <div class="hero-art" aria-hidden="true" id="heroArt"></div>
+  </section>
+
+  <main id="shop" class="wrap">
+    <nav class="cats" id="cats" aria-label="الأقسام"></nav>
+    <div class="tools">
+      <input id="search" type="search" placeholder="ابحث عن عطر، دهن، بخور…" aria-label="بحث">
+    </div>
+    <div class="subs" id="subs"></div>
+    <div class="grid" id="grid"></div>
+    <p class="empty hidden" id="empty">لا توجد منتجات في هذا القسم بعد.</p>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <div class="ornament"><span id="brandMark2"></span></div>
+      <p><b id="footName">عطور سمائل</b> · سمائل، محافظة الداخلية، سلطنة عُمان</p>
+      <p class="muted" id="storeNote"></p>
+      <p><a href="admin.html" class="muted">دخول المحل</a></p>
+    </div>
+  </footer>
+
+  <div class="sticky-cart hidden" id="stickyCart">
+    <button class="btn btn-gold btn-block" id="stickyBtn">عرض السلة · <span id="stickyTotal" class="num"></span></button>
+  </div>
+
+  <div id="print-root"></div>
+  <script src="vendor/supabase.js"></script>
+  <script type="module" src="js/store.js"></script>
+</body>
+</html>
