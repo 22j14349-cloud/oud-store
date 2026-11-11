@@ -60,6 +60,10 @@ create table if not exists public.products (
   created_at  timestamptz not null default now()
 );
 
+-- أعمدة أضيفت لاحقاً: الحجم وسعر ما قبل العرض
+alter table public.products add column if not exists size text not null default '';
+alter table public.products add column if not exists old_price numeric(10,3);
+
 -- يولّد باركود EAN-13 تلقائياً (يبدأ بـ 200 وهو نطاق الاستخدام الداخلي للمحلات)
 create or replace function public.products_barcode() returns trigger
 language plpgsql as $$

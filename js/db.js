@@ -5,6 +5,9 @@ import { ean13, resizeImage, blobToDataURL } from './util.js';
 export const DEMO = !(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY);
 
 const err = m => { throw new Error(m); };
+const productRow = p => ({ name: p.name, category: p.category, subtype: p.subtype || '', size: p.size || '', description: p.description || '',
+  price: Number(p.price), old_price: Number(p.old_price) > Number(p.price) ? Number(p.old_price) : null,
+  stock: Number(p.stock) || 0, image_url: p.image_url || '', active: p.active !== false });
 const emailFor = role => (role === 'admin' ? CONFIG.ADMIN_EMAIL : CONFIG.EMPLOYEE_EMAIL).toLowerCase();
 
 // ============================== Supabase ==============================
@@ -23,12 +26,17 @@ function supabaseBackend() {
     async listProducts() { return ok(await sb.from('products').select('*').order('created_at', { ascending: false })); },
     async findByBarcode(code) { return ok(await sb.from('products').select('*').eq('barcode', code).maybeSingle()); },
     async saveProduct(p) {
-      const row = { name: p.name, category: p.category, subtype: p.subtype || '', description: p.description || '', price: Number(p.price), stock: Number(p.stock) || 0, image_url: p.image_url || '', active: !!p.active };
+      const row = productRow(p);
       if (p.barcode) row.barcode = p.barcode;
       if (p.id) return ok(await sb.from('products').update(row).eq('id', p.id).select().single());
       return ok(await sb.from('products').insert(row).select().single());
     },
     async deleteProduct(id) { ok(await sb.from('products').delete().eq('id', id)); },
+    async importProducts(list) {
+      const out = [];
+      for (let i = 0; i < list.length; i += 100) out.push(...ok(await sb.from('products').insert(list.slice(i, i + 100).map(productRow)).select()));
+      return out;
+    },
     async uploadProductImage(file) {
       const blob = await resizeImage(file);
       const path = `${crypto.randomUUID()}.jpg`;
@@ -142,7 +150,7 @@ function demoBackend() {
       need('admin');
       return tx(s => {
         if (p.barcode && s.products.some(x => x.barcode === p.barcode && x.id !== p.id)) err('هذا الباركود مستخدم لمنتج آخر');
-        const row = { name: p.name, category: p.category, subtype: p.subtype || '', description: p.description || '', price: Number(p.price), stock: Number(p.stock) || 0, image_url: p.image_url || '', active: !!p.active };
+        const row = productRow(p);
         if (p.id) { const x = s.products.find(q => q.id === p.id); Object.assign(x, row, p.barcode ? { barcode: p.barcode } : {}); return x; }
         let bc = p.barcode;
         while (!bc || s.products.some(x => x.barcode === bc)) bc = ean13('200' + String(++s.seq).padStart(9, '0'));
@@ -151,6 +159,13 @@ function demoBackend() {
       });
     },
     async deleteProduct(id) { need('admin'); tx(s => { s.products = s.products.filter(p => p.id !== id); }); },
+    async importProducts(list) {
+      need('admin');
+      return tx(s => list.map(p => {
+        let bc; do bc = ean13('200' + String(++s.seq).padStart(9, '0')); while (s.products.some(x => x.barcode === bc));
+        const x = { id: uid(), ...productRow(p), barcode: bc, created_at: now() }; s.products.unshift(x); return x;
+      }));
+    },
     async uploadProductImage(file) { return blobToDataURL(await resizeImage(file, 600, 0.75)); },
 
     async placeOrder(o) {

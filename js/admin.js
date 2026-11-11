@@ -256,6 +256,8 @@ function setupProducts() {
   $('#addProd').onclick = () => editProduct();
   $('#selAll').onchange = e => { filteredProducts().forEach(p => e.target.checked ? S.selected.add(p.id) : S.selected.delete(p.id)); renderProducts(); };
   $('#printSel').onclick = openPrintLabels;
+  $('#importBtn').onclick = () => $('#importFile').click();
+  $('#importFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importExcel(f); };
 }
 function filteredProducts() {
   const q = $('#prodSearch').value.trim().toLowerCase(), c = $('#prodCat').value;
@@ -267,8 +269,8 @@ function renderProducts() {
       <input type="checkbox" class="sel" ${S.selected.has(p.id) ? 'checked' : ''} aria-label="تحديد للطباعة" style="width:20px;height:20px;accent-color:var(--gold)">
       <div class="thumb">${productVisual(p)}</div>
       <div class="meta"><b>${esc(p.name)}</b>
-        <small class="muted">${esc(catById(p.category).name)}${p.subtype ? ' · ' + esc(p.subtype) : ''}</small>
-        <div><b class="num gold" style="display:inline">${money(p.price)}</b> · <span class="${p.stock <= 3 ? 'down' : 'muted'}">المخزون: ${p.stock}</span>${p.active ? '' : ' · <span class="badge">مخفي</span>'}</div>
+        <small class="muted">${esc(catById(p.category).name)}${p.subtype ? ' · ' + esc(p.subtype) : ''}${p.size ? ' · ' + esc(p.size) : ''}</small>
+        <div><b class="num gold" style="display:inline">${money(p.price)}</b>${p.old_price ? ` <s class="muted num">${money(p.old_price)}</s>` : ''} · <span class="${p.stock <= 3 ? 'down' : 'muted'}">المخزون: ${p.stock}</span>${p.active ? '' : ' · <span class="badge">مخفي</span>'}</div>
         <div class="bc">${barcodeSVG(p.barcode, { height: 34, fontSize: 12 })}</div></div>
       <div class="prow-acts"><button class="btn btn-ghost btn-sm" data-e>تعديل</button></div></div>`).join('')
     : '<div class="empty-s card pad">لا توجد منتجات. اضغط «+ منتج جديد» لإضافة أول منتج.</div>';
@@ -280,7 +282,7 @@ function renderProducts() {
 
 function editProduct(p) {
   const isNew = !p;
-  p = p || { name: '', category: 'perfume', subtype: '', description: '', price: '', stock: 0, image_url: '', active: true, barcode: '' };
+  p = p || { name: '', category: 'perfume', subtype: '', size: '', old_price: '', description: '', price: '', stock: 0, image_url: '', active: true, barcode: '' };
   const m = openModal(`<h2>${isNew ? 'منتج جديد' : 'تعديل المنتج'}</h2>
     <form id="pf">
       <div class="field"><label for="fn">اسم المنتج</label><input id="fn" required maxlength="120" value="${esc(p.name)}"></div>
@@ -289,7 +291,11 @@ function editProduct(p) {
         <div class="field"><label for="fs">النوع</label><input id="fs" list="subl" value="${esc(p.subtype)}" placeholder="مثلاً: دهن عود"><datalist id="subl"></datalist></div>
       </div>
       <div class="row">
-        <div class="field"><label for="fp">السعر (ر.ع.)</label><input id="fp" type="number" min="0" step="0.001" required inputmode="decimal" value="${p.price}"></div>
+        <div class="field"><label for="fp">سعر البيع (ر.ع.)</label><input id="fp" type="number" min="0" step="0.001" required inputmode="decimal" value="${p.price}"></div>
+        <div class="field"><label for="fo">السعر قبل العرض (اختياري)</label><input id="fo" type="number" min="0" step="0.001" inputmode="decimal" value="${p.old_price ?? ''}" placeholder="يظهر مشطوباً"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label for="fz">الحجم</label><input id="fz" maxlength="40" value="${esc(p.size || '')}" placeholder="مثلاً: 100mL"></div>
         <div class="field"><label for="fq">الكمية في المخزون</label><input id="fq" type="number" step="1" inputmode="numeric" value="${p.stock}"></div>
       </div>
       <div class="field"><label for="fd">الوصف</label><textarea id="fd" maxlength="600">${esc(p.description)}</textarea></div>
@@ -320,7 +326,7 @@ function editProduct(p) {
       let image_url = p.image_url;
       if (file) image_url = await db.uploadProductImage(file);
       const saved = await db.saveProduct({ id: p.id, name: el.querySelector('#fn').value.trim(), category: el.querySelector('#fc').value, subtype: el.querySelector('#fs').value.trim(),
-        price: Number(el.querySelector('#fp').value), stock: parseInt(el.querySelector('#fq').value || '0', 10), description: el.querySelector('#fd').value.trim(),
+        price: Number(el.querySelector('#fp').value), old_price: el.querySelector('#fo').value, size: el.querySelector('#fz').value.trim(), stock: parseInt(el.querySelector('#fq').value || '0', 10), description: el.querySelector('#fd').value.trim(),
         image_url, active: el.querySelector('#fa').checked, barcode: el.querySelector('#fb').value.trim() });
       await loadProducts(); renderProducts(); m.close();
       toast(isNew ? `تمت الإضافة · الباركود ${saved.barcode}` : 'تم الحفظ');
@@ -342,7 +348,7 @@ function openPrintLabels() {
     m.el.querySelectorAll('[data-id]').forEach(inp => {
       const p = items.find(x => x.id === inp.dataset.id), n = Math.min(500, parseInt(inp.value || '0', 10));
       const svg = barcodeSVG(p.barcode, { height: 45, fontSize: 13, margin: 8 });
-      for (let i = 0; i < n; i++) out.push(`<div class="label"><div class="l-shop">${esc(S.settings.shop_name)}</div><div class="l-name">${esc(p.name)}</div>${svg}${showPrice ? `<div class="l-price">${money(p.price)}</div>` : ''}</div>`);
+      for (let i = 0; i < n; i++) out.push(`<div class="label"><div class="l-shop">${esc(S.settings.shop_name)}</div><div class="l-name">${esc(p.name)}${p.size ? ' · ' + esc(p.size) : ''}</div>${svg}${showPrice ? `<div class="l-price">${money(p.price)}</div>` : ''}</div>`);
     });
     if (!out.length) return;
     m.close(); printHTML(`<div class="labels">${out.join('')}</div>`);
@@ -441,3 +447,85 @@ function setupSettings() {
 }
 
 init();
+
+
+// ------------------------------------------------------------ استيراد المنتجات من Excel
+function guessCategory(name) {
+  if (/لبان|مستك/.test(name)) return 'frankincense';
+  if (/بخور|دقة|خلطة|دخون|مبخر/.test(name)) return 'incense';
+  if (/مشحم|مخمري|دهن|زيت/.test(name)) return 'oil';
+  return 'perfume';
+}
+function parseNum(v) {
+  if (typeof v === 'number') return v;
+  const n = parseFloat(String(v ?? '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^\d.]/g, ''));
+  return isNaN(n) ? null : n;
+}
+async function importExcel(file) {
+  if (!window.XLSX) { toast('تعذر تحميل قارئ ملفات Excel', 'bad'); return; }
+  let rows;
+  try {
+    const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    rows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '' });
+  } catch { toast('لا يمكن قراءة الملف. استخدم ملف Excel (.xlsx) أو CSV', 'bad'); return; }
+  const head = (rows.shift() || []).map(h => String(h).trim());
+  const col = re => head.findIndex(h => re.test(h));
+  const iName = col(/اسم|المنتج|name/i), iSize = col(/حجم|الحجم|size/i), iCat = col(/قسم|القسم|category/i);
+  const iOffer = col(/عرض|offer|sale/i), iOrig = col(/الأصلي|الاصلي|original/i), iPrice = col(/سعر|price/i);
+  if (iName < 0 || (iOffer < 0 && iPrice < 0)) { toast('يجب أن يحتوي الملف على عمود لاسم المنتج وعمود للسعر', 'bad'); return; }
+  const catNames = Object.fromEntries(CATEGORIES.map(c => [c.name.replace(/ُ/g, ''), c.id]));
+  const existing = new Set(S.products.map(p => `${p.name.trim()}|${(p.size || '').trim()}`));
+  const items = rows.map(r => {
+    const name = String(r[iName] ?? '').replace(/\s+/g, ' ').trim(); if (!name) return null;
+    const size = iSize >= 0 ? String(r[iSize] ?? '').trim() : '';
+    const orig = iOrig >= 0 ? parseNum(r[iOrig]) : null;
+    const offer = iOffer >= 0 && iOffer !== iOrig ? parseNum(r[iOffer]) : null;
+    const price = offer ?? orig ?? parseNum(r[iPrice]);
+    const catTxt = iCat >= 0 ? String(r[iCat]).replace(/ُ/g, '').trim() : '';
+    const warn = [];
+    if (price == null) warn.push('بدون سعر');
+    if (orig != null && offer != null && offer > orig) warn.push('سعر العرض أكبر من الأصلي');
+    if (existing.has(`${name}|${size}`)) warn.push('موجود مسبقاً');
+    return { name, size, price, old_price: orig && offer != null && orig > offer ? orig : null, category: catNames[catTxt] || guessCategory(name), warn, on: !warn.length };
+  }).filter(Boolean);
+  if (!items.length) { toast('لا توجد منتجات في الملف', 'bad'); return; }
+
+  const m = openModal(`<h2>استيراد ${items.length} منتجاً</h2>
+    <p class="muted">راجع القسم والسعر لكل منتج. القسم مقترح تلقائياً من الاسم، ويمكنك تغييره. سيُنشأ باركود لكل منتج.</p>
+    <div class="row" style="margin-bottom:10px">
+      <div class="field"><label for="ist">الكمية الافتراضية في المخزون</label><input id="ist" type="number" min="0" value="10"></div>
+      <div class="field"><label for="iall">تغيير قسم المحدد إلى</label><select id="iall"><option value="">—</option>${CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}</select></div>
+    </div>
+    <div class="imp-wrap"><table class="imp"><thead><tr><th><input type="checkbox" id="ichk" checked aria-label="تحديد الكل"></th><th>المنتج</th><th>القسم</th><th>السعر</th><th>الحجم</th><th>قبل العرض</th></tr></thead>
+    <tbody>${items.map((it, i) => `<tr data-i="${i}" class="${it.warn.length ? 'warn' : ''}">
+      <td><input type="checkbox" class="ion" ${it.on ? 'checked' : ''}></td>
+      <td><b>${esc(it.name)}</b>${it.warn.length ? `<div class="down" style="font-size:.8rem">${it.warn.join('، ')}</div>` : ''}</td>
+      <td><select class="icat">${CATEGORIES.map(c => `<option value="${c.id}" ${c.id === it.category ? 'selected' : ''}>${c.name}</option>`).join('')}</select></td>
+      <td><input class="ipr" type="number" min="0" step="0.001" value="${it.price ?? ''}"></td>
+      <td>${esc(it.size)}</td>
+      <td class="num muted">${it.old_price ? money(it.old_price) : ''}</td>
+      </tr>`).join('')}</tbody></table></div>
+    <button class="btn btn-gold btn-block" id="igo" style="margin-top:14px">استيراد المحدد</button>`, { wide: true });
+  const el = m.el, trs = [...el.querySelectorAll('tbody tr')];
+  const count = () => { el.querySelector('#igo').textContent = `استيراد ${trs.filter(t => t.querySelector('.ion').checked).length} منتجاً`; };
+  count();
+  trs.forEach(t => t.querySelector('.ion').onchange = count);
+  el.querySelector('#ichk').onchange = e => { trs.forEach(t => (t.querySelector('.ion').checked = e.target.checked)); count(); };
+  el.querySelector('#iall').onchange = e => { if (e.target.value) trs.filter(t => t.querySelector('.ion').checked).forEach(t => (t.querySelector('.icat').value = e.target.value)); e.target.value = ''; };
+  el.querySelector('#igo').onclick = async () => {
+    const stock = parseInt(el.querySelector('#ist').value || '0', 10);
+    const list = trs.filter(t => t.querySelector('.ion').checked).map(t => {
+      const it = items[t.dataset.i], price = Number(t.querySelector('.ipr').value);
+      return { name: it.name, size: it.size, price, old_price: it.old_price && it.old_price > price ? it.old_price : null, category: t.querySelector('.icat').value, stock, active: true };
+    });
+    const bad = list.find(x => !(x.price >= 0) || isNaN(x.price));
+    if (!list.length) { toast('لم تحدد أي منتج', 'bad'); return; }
+    if (bad) { toast(`أدخل سعراً صحيحاً للمنتج «${bad.name}»`, 'bad'); return; }
+    const btn = el.querySelector('#igo'); btn.disabled = true; btn.textContent = 'جارٍ الاستيراد…';
+    try {
+      const saved = await db.importProducts(list);
+      await loadProducts(); S.selected = new Set(saved.map(x => x.id)); renderProducts(); m.close();
+      toast(`تم استيراد ${saved.length} منتجاً وإنشاء باركود لكل منها`);
+    } catch (e) { toast(e.message, 'bad'); btn.disabled = false; count(); }
+  };
+}

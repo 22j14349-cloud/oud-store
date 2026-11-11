@@ -130,3 +130,13 @@
   .receipt td { padding: 1mm 0; border-bottom: 0.2mm dashed #999; }
   .receipt .t { font-size: 13pt; font-weight: 800; display: flex; justify-content: space-between; }
 }
+
+/* جدول الاستيراد */
+.imp-wrap { overflow: auto; max-height: 55vh; border: 1px solid var(--line); border-radius: 14px; }
+.imp { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.imp th { position: sticky; top: 0; background: #2c1d13; color: var(--gold-2); text-align: start; padding: 8px; white-space: nowrap; z-index: 1; }
+.imp td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: middle; }
+.imp td input[type=number] { width: 90px; padding: .4em .5em; }
+.imp td select { min-width: 120px; padding: .4em .5em; }
+.imp tr.warn { background: rgba(224, 123, 106, .08); }
+.imp input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); }

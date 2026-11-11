@@ -85,3 +85,6 @@
   .brand b { font-size: 1.2rem; }
   .install-btn { padding: .45em .75em; font-size: .8rem; }
 }
+
+.price .old { display: block; font-size: .78rem; font-weight: 500; color: var(--muted); }
+.badge.sale { background: linear-gradient(135deg, #b5483a, #8c3a2c); color: #fff; border-color: transparent; }

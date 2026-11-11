@@ -76,11 +76,11 @@ function renderGrid() {
   $('#grid').innerHTML = list.map(p => {
     const inCart = state.cart[p.id] || 0, out = p.stock <= 0;
     return `<article class="pcard" data-id="${p.id}">
-      <div class="pimg" data-open>${productVisual(p)}${out ? '<span class="badge badge-bad">نفدت الكمية</span>' : ''}</div>
+      <div class="pimg" data-open>${productVisual(p)}${out ? '<span class="badge badge-bad">نفدت الكمية</span>' : p.old_price ? `<span class="badge sale">خصم ${Math.round((1 - p.price / p.old_price) * 100)}%</span>` : ''}</div>
       <div class="pbody">
         <div class="pname" data-open>${esc(p.name)}</div>
-        <div class="psub">${esc(catById(p.category).name)}${p.subtype ? ' · ' + esc(p.subtype) : ''}</div>
-        <div class="pfoot"><span class="price num">${money(p.price)}</span>
+        <div class="psub">${esc(catById(p.category).name)}${p.subtype ? ' · ' + esc(p.subtype) : ''}${p.size ? ' · ' + esc(p.size) : ''}</div>
+        <div class="pfoot"><span class="price num">${money(p.price)}${p.old_price ? `<s class="old num">${money(p.old_price)}</s>` : ''}</span>
           ${out ? '' : inCart ? `<span class="qty"><button data-dec>−</button><b>${inCart}</b><button data-inc>+</button></span>` : `<button class="btn btn-gold add" data-inc aria-label="أضف للسلة">+</button>`}
         </div>
       </div></article>`;
@@ -115,7 +115,8 @@ function openProduct(id) {
     <span class="badge">${esc(catById(p.category).name)}${p.subtype ? ' · ' + esc(p.subtype) : ''}</span>
     <h2 style="margin-top:10px">${esc(p.name)}</h2>
     <p class="muted">${esc(p.description) || ''}</p>
-    <div class="cart-total"><span class="price num">${money(p.price)}</span>
+    ${p.size ? `<p>الحجم: <b>${esc(p.size)}</b></p>` : ''}
+    <div class="cart-total"><span class="price num">${money(p.price)}${p.old_price ? `<s class="old num">${money(p.old_price)}</s>` : ''}</span>
     ${p.stock > 0 ? '<button class="btn btn-gold" data-add>أضف إلى السلة</button>' : '<span class="badge badge-bad">نفدت الكمية</span>'}</div>`);
   m.el.querySelector('[data-add]')?.addEventListener('click', () => { changeQty(id, 1); m.close(); toast('أُضيف إلى السلة'); });
 }

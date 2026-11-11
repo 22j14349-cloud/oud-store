@@ -1,5 +1,5 @@
 // يجعل الموقع قابلاً للتثبيت كتطبيق ويفتح بسرعة. لا يخزّن بيانات قاعدة البيانات.
-const CACHE = 'oud-v3';
+const CACHE = 'oud-v4';
 const CORE = ['./', './index.html', './admin.html', './css/style.css', './css/store.css', './css/admin.css',
   './js/config.js', './js/util.js', './js/db.js', './js/store.js', './js/admin.js', './js/pwa.js',
   './vendor/supabase.js', './vendor/html5-qrcode.min.js', './vendor/JsBarcode.all.min.js', './vendor/chart.umd.js',
