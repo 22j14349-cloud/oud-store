@@ -26,8 +26,9 @@
    - `staff@oud.shop` بكلمة مرور الموظف
 4. من **Authentication > Sign In / Providers** أوقف **Allow new users to sign up** حتى لا يسجّل أحد غيركما.
 5. من **Project Settings > API** انسخ **Project URL** و **anon public key** وضعهما في `js/config.js`.
-6. انشر الموقع على GitHub Pages: **Settings > Pages > Deploy from branch > main / root**.
-   الكاميرا تحتاج رابطاً يبدأ بـ `https` وهذا متوفر تلقائياً في GitHub Pages.
+6. الموقع منشور على Netlify، وكل تحديث يُرفع إلى المستودع يُنشر تلقائياً:
+   - المتجر: https://alataaltayeb.netlify.app/
+   - لوحة المحل: https://alataaltayeb.netlify.app/admin.html
 
 بعدها ادخل `admin.html` كصاحب المحل، واكتب رقم الهاتف الذي يستقبل التحويل من **الإعدادات**، ثم ابدأ بإضافة المنتجات.
 
