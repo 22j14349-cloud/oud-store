@@ -1,6 +1,6 @@
 import { db, DEMO } from './db.js';
 import { splash, installButton, rememberShopName } from './pwa.js';
-import { CATEGORIES, catById, money, esc, $, $$, toast, icon, productVisual, openModal } from './util.js';
+import { CATEGORIES, catById, money, esc, $, $$, toast, icon, productVisual, openModal, pickOffer, offerPickNames } from './util.js';
 
 const HERO_ART = `<svg viewBox="0 0 400 400" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
   <defs><radialGradient id="glow" cx="50%" cy="70%" r="50%"><stop offset="0" stop-color="#d2a855" stop-opacity=".35"/><stop offset="1" stop-color="#d2a855" stop-opacity="0"/></radialGradient></defs>
@@ -21,12 +21,14 @@ const HERO_ART = `<svg viewBox="0 0 400 400" fill="none" stroke="currentColor" s
   <g stroke-width="1.8" opacity=".8"><path d="M60 330c-12 4-14 18-6 24s20 2 22-8-6-18-16-16z"/><path d="M90 318c-9 0-14 10-10 17s16 6 18-2-1-15-8-15z"/></g>
 </svg>`;
 
-const state = { products: [], cat: 'all', sub: '', q: '', settings: {}, cart: loadCart() };
+const state = { products: [], offers: [], cat: 'all', sub: '', q: '', settings: {}, cart: loadCart(), bundles: loadBundles() };
 
 function loadCart() { try { return JSON.parse(localStorage.getItem('oud_cart')) || {}; } catch { return {}; } }
-function saveCart() { try { localStorage.setItem('oud_cart', JSON.stringify(state.cart)); } catch {} renderCartBadge(); }
+function loadBundles() { try { return JSON.parse(localStorage.getItem('oud_bundles')) || []; } catch { return []; } }
+function saveCart() { try { localStorage.setItem('oud_cart', JSON.stringify(state.cart)); localStorage.setItem('oud_bundles', JSON.stringify(state.bundles)); } catch {} renderCartBadge(); }
+const offerOf = b => state.offers.find(o => o.id === b.offer_id);
 const cartItems = () => Object.entries(state.cart).map(([id, qty]) => ({ p: state.products.find(x => x.id === id), qty })).filter(x => x.p && x.p.active);
-const cartTotal = () => cartItems().reduce((s, x) => s + x.p.price * x.qty, 0);
+const cartTotal = () => cartItems().reduce((s, x) => s + x.p.price * x.qty, 0) + state.bundles.reduce((s, b) => s + (offerOf(b)?.price || 0), 0);
 
 async function init() {
   splash('store'); installButton($('#installBtn'));
@@ -40,7 +42,7 @@ async function init() {
   $('#cartBtn').addEventListener('click', openCart);
   $('#stickyBtn').addEventListener('click', openCart);
   try {
-    [state.settings, state.products] = await Promise.all([db.getSettings(), db.listProducts()]);
+    [state.settings, state.products, state.offers] = await Promise.all([db.getSettings(), db.listProducts(), db.listOffers().catch(() => [])]);
   } catch (e) { toast('تعذر تحميل المنتجات: ' + e.message, 'bad'); }
   const name = state.settings.shop_name || 'عطور سمائل';
   $('#shopName').textContent = name; $('#footName').textContent = name; rememberShopName(state.settings.shop_name);
@@ -48,9 +50,30 @@ async function init() {
   $('#storeNote').textContent = state.settings.store_note || '';
   // تنظيف السلة من منتجات لم تعد متوفرة
   for (const id of Object.keys(state.cart)) if (!state.products.some(p => p.id === id && p.active)) delete state.cart[id];
-  saveCart(); renderGrid();
+  state.bundles = state.bundles.filter(b => { const o = offerOf(b); return o && b.picks.every(id => o.product_ids.includes(id) && state.products.some(p => p.id === id && p.active)); });
+  saveCart(); renderOffers(); renderGrid();
   const last = JSON.parse(localStorage.getItem('oud_last_order') || 'null');
   if (last && Date.now() - last.at < 3 * 3600e3 && !last.done) setTimeout(() => showPayment(last), 400);
+}
+
+function renderOffers() {
+  const list = state.offers.filter(o => o.active);
+  $('#offers').classList.toggle('hidden', !list.length);
+  $('#offerRow').innerHTML = list.map(o => {
+    const imgs = o.image_url ? `<img src="${esc(o.image_url)}" alt="${esc(o.title)}" loading="lazy">`
+      : `<div class="ph ph-incense">${icon('burner')}</div>`;
+    return `<article class="ocard" data-id="${o.id}"><div class="oimg">${imgs}<span class="badge sale">عرض</span></div>
+      <div class="obody"><b>${esc(o.title)}</b><small class="muted">اختر ${o.pick_count} ${o.pick_count > 2 ? 'منتجات' : 'منتج'}</small>
+      <div class="pfoot"><span class="price num">${money(o.price)}</span><button class="btn btn-gold btn-sm">اختر</button></div></div></article>`;
+  }).join('');
+  $$('#offerRow .ocard').forEach(c => c.onclick = () => chooseOffer(c.dataset.id));
+}
+async function chooseOffer(id) {
+  const o = state.offers.find(x => x.id === id); if (!o) return;
+  const picks = await pickOffer(o, state.products.filter(p => p.active));
+  if (!picks) return;
+  state.bundles.push({ offer_id: o.id, picks }); saveCart(); toast('أُضيف العرض إلى السلة');
+  const c = $('#cartCount'); c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump');
 }
 
 function renderCats() {
@@ -103,7 +126,7 @@ function changeQty(id, d) {
 }
 
 function renderCartBadge() {
-  const n = Object.values(state.cart).reduce((a, b) => a + b, 0);
+  const n = Object.values(state.cart).reduce((a, b) => a + b, 0) + state.bundles.length;
   $('#cartCount').textContent = n;
   $('#stickyCart').classList.toggle('hidden', n === 0);
   $('#stickyTotal').textContent = money(cartTotal());
@@ -122,20 +145,23 @@ function openProduct(id) {
 }
 
 function openCart() {
-  const items = cartItems();
-  if (!items.length) { toast('السلة فارغة'); return; }
+  if (!cartItems().length && !state.bundles.length) { toast('السلة فارغة'); return; }
   const m = openModal(`<h2>سلة المشتريات</h2><div id="lines"></div>
     <div class="cart-total"><span>الإجمالي</span><span class="price num" id="ct"></span></div>
     <button class="btn btn-gold btn-block" id="go">إتمام الطلب</button>`);
   const draw = () => {
     const it = cartItems();
-    if (!it.length) { m.close(); return; }
-    m.el.querySelector('#lines').innerHTML = it.map(({ p, qty }) => `<div class="cart-line" data-id="${p.id}">
+    if (!it.length && !state.bundles.length) { m.close(); return; }
+    m.el.querySelector('#lines').innerHTML = state.bundles.map((b, i) => { const o = offerOf(b); return `<div class="cart-line" data-b="${i}">
+      <div class="thumb">${o.image_url ? `<img src="${esc(o.image_url)}" alt="">` : `<div class="ph ph-incense">${icon('burner')}</div>`}</div>
+      <div><b>${esc(o.title)}</b><small class="picks-note">${esc(offerPickNames(b, state.products).join('، '))}</small><div class="muted num">${money(o.price)}</div></div>
+      <button class="btn btn-ghost btn-sm" data-del aria-label="حذف العرض">حذف</button></div>`; }).join('') + it.map(({ p, qty }) => `<div class="cart-line" data-id="${p.id}">
       <div class="thumb">${productVisual(p)}</div>
       <div><b>${esc(p.name)}</b><div class="muted num">${money(p.price)}</div></div>
       <span class="qty"><button data-dec>−</button><b>${qty}</b><button data-inc>+</button></span></div>`).join('');
     m.el.querySelector('#ct').textContent = money(cartTotal());
-    m.el.querySelectorAll('.cart-line').forEach(l => {
+    m.el.querySelectorAll('.cart-line[data-b] [data-del]').forEach(b => b.onclick = () => { state.bundles.splice(Number(b.closest('.cart-line').dataset.b), 1); saveCart(); draw(); });
+    m.el.querySelectorAll('.cart-line[data-id]').forEach(l => {
       l.querySelector('[data-inc]').onclick = () => { changeQty(l.dataset.id, 1); draw(); };
       l.querySelector('[data-dec]').onclick = () => { changeQty(l.dataset.id, -1); draw(); };
     });
@@ -175,13 +201,13 @@ function openCheckout() {
     if (ful === 'delivery' && address.length < 4) { toast('أدخل عنوان التوصيل', 'bad'); return; }
     const btn = m.el.querySelector('#send'); btn.disabled = true; btn.textContent = 'جارٍ الإرسال…';
     try {
-      const items = cartItems().map(({ p, qty }) => ({ id: p.id, qty }));
-      const lines = cartItems().map(({ p, qty }) => `${p.name} × ${qty}`);
+      const items = [...cartItems().map(({ p, qty }) => ({ id: p.id, qty })), ...state.bundles.map(b => ({ offer_id: b.offer_id, picks: b.picks }))];
+      const lines = [...cartItems().map(({ p, qty }) => `${p.name} × ${qty}`), ...state.bundles.map(b => `${offerOf(b).title}: ${offerPickNames(b, state.products).join('، ')}`)];
       const r = await db.placeOrder({ name, phone, fulfillment: ful, address, note, items });
       localStorage.setItem('oud_customer', JSON.stringify({ name, phone, address }));
       const order = { order_no: Number(r.order_no), total: Number(r.total), phone, name, lines, at: Date.now() };
       localStorage.setItem('oud_last_order', JSON.stringify(order));
-      state.cart = {}; saveCart(); renderGrid(); m.close(); showPayment(order);
+      state.cart = {}; state.bundles = []; saveCart(); renderGrid(); m.close(); showPayment(order);
     } catch (er) { toast(er.message, 'bad'); btn.disabled = false; btn.textContent = 'إرسال الطلب'; }
   };
 }

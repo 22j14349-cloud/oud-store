@@ -105,3 +105,42 @@ export function ask(message, { ok = 'تأكيد', cancel = 'رجوع', danger = 
     m.el.querySelector('[data-n]').onclick = () => m.close();
   });
 }
+
+// نافذة اختيار منتجات العرض (تُستخدم في المتجر وفي البيع بالمحل)
+export function pickOffer(offer, products, { checkStock = true, okLabel = 'أضف العرض' } = {}) {
+  return new Promise(resolve => {
+    const list = products.filter(p => offer.product_ids.includes(p.id));
+    const counts = {};
+    let done = false;
+    const m = openModal(`<h2>${esc(offer.title)}</h2>
+      <p class="muted">${esc(offer.description || '')}</p>
+      <div class="offer-meter"><b id="ocnt">0</b> من <b>${offer.pick_count}</b> · <span class="price num">${money(offer.price)}</span></div>
+      <div class="pick-list">${list.map(p => {
+        const out = checkStock && p.stock <= 0;
+        return `<div class="pick ${out ? 'off' : ''}" data-id="${p.id}"><div class="pick-thumb">${productVisual(p)}</div>
+          <div class="pick-meta"><b>${esc(p.name)}</b><small class="muted">${esc(p.size || p.subtype || '')}${out ? ' · نفدت الكمية' : ''}</small></div>
+          ${out ? '' : `<span class="qty"><button type="button" data-d="-1">−</button><b>0</b><button type="button" data-d="1">+</button></span>`}</div>`;
+      }).join('') || '<p class="muted">لا توجد منتجات في هذا العرض بعد.</p>'}</div>
+      <button class="btn btn-gold btn-block" id="ook" disabled>${okLabel}</button>`, { onClose: () => { if (!done) { done = true; resolve(null); } } });
+    const el = m.el, total = () => Object.values(counts).reduce((a, b) => a + b, 0);
+    const draw = () => {
+      const n = total();
+      el.querySelector('#ocnt').textContent = n;
+      el.querySelector('#ook').disabled = n !== offer.pick_count;
+      el.querySelectorAll('.pick[data-id]').forEach(r => { const b = r.querySelector('.qty b'); if (b) b.textContent = counts[r.dataset.id] || 0; r.classList.toggle('on', !!counts[r.dataset.id]); });
+    };
+    el.querySelectorAll('.pick [data-d]').forEach(b => b.onclick = () => {
+      const id = b.closest('.pick').dataset.id, d = Number(b.dataset.d), p = list.find(x => x.id === id);
+      const next = (counts[id] || 0) + d;
+      if (next < 0 || (d > 0 && total() >= offer.pick_count)) return;
+      if (d > 0 && checkStock && next > p.stock) { toast('الكمية المتوفرة لا تكفي', 'bad'); return; }
+      if (next) counts[id] = next; else delete counts[id];
+      draw();
+    });
+    el.querySelector('#ook').onclick = () => {
+      const picks = Object.entries(counts).flatMap(([id, n]) => Array(n).fill(id));
+      done = true; resolve(picks); m.close();
+    };
+  });
+}
+export const offerPickNames = (item, products) => (item.picks || []).map(id => (products.find(p => p.id === id) || {}).name || '؟');

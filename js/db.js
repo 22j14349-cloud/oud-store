@@ -5,6 +5,8 @@ import { ean13, resizeImage, blobToDataURL } from './util.js';
 export const DEMO = !(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY);
 
 const err = m => { throw new Error(m); };
+const offerRow = o => ({ title: o.title, description: o.description || '', image_url: o.image_url || '', price: Number(o.price),
+  pick_count: Math.max(1, parseInt(o.pick_count, 10) || 1), product_ids: o.product_ids || [], active: o.active !== false });
 const productRow = p => ({ name: p.name, category: p.category, subtype: p.subtype || '', size: p.size || '', description: p.description || '',
   price: Number(p.price), old_price: Number(p.old_price) > Number(p.price) ? Number(p.old_price) : null,
   stock: Number(p.stock) || 0, image_url: p.image_url || '', active: p.active !== false });
@@ -44,6 +46,12 @@ function supabaseBackend() {
       return sb.storage.from('products').getPublicUrl(path).data.publicUrl;
     },
 
+    async listOffers() { return ok(await sb.from('offers').select('*').order('created_at', { ascending: false })); },
+    async saveOffer(o) {
+      if (o.id) return ok(await sb.from('offers').update(offerRow(o)).eq('id', o.id).select().single());
+      return ok(await sb.from('offers').insert(offerRow(o)).select().single());
+    },
+    async deleteOffer(id) { ok(await sb.from('offers').delete().eq('id', id)); },
     async placeOrder(o) {
       const rows = ok(await sb.rpc('place_order', { p_name: o.name, p_phone: o.phone, p_fulfillment: o.fulfillment, p_address: o.address || '', p_note: o.note || '', p_items: o.items }));
       return rows[0];
@@ -106,7 +114,7 @@ function demoBackend() {
   function seed() {
     const s = { seq: 0, orderSeq: 1000, invoiceSeq: 0, passwords: { admin: 'admin123', employee: 'user123' },
       settings: { id: 1, shop_name: 'عطور سمائل', transfer_phone: '', account_name: '', whatsapp: '', store_note: 'نقوم بالتوصيل داخل سمائل والولايات المجاورة.' },
-      products: [], orders: [], sales: [] };
+      products: [], offers: [], orders: [], sales: [] };
     const samples = [
       ['عطر العود الملكي', 'perfume', 'عطر عود', 28.5, 'عطر شرقي فاخر بقاعدة من العود الكمبودي والعنبر.'],
       ['مسك الطهارة الأبيض', 'perfume', 'مسك', 4.5, 'مسك ناعم ونظيف يدوم طويلاً.'],
@@ -120,6 +128,8 @@ function demoBackend() {
     s.products = samples.map(([name, category, subtype, price, description], i) => ({
       id: uid(), name, category, subtype, price, description, stock: 20, image_url: '', active: true,
       barcode: ean13('200' + String(++s.seq).padStart(9, '0')), created_at: new Date(Date.now() - i * 1000).toISOString() }));
+    s.offers = [{ id: uid(), title: 'أي 3 حبات بخور بـ 10 ريال', description: 'اختر 3 من البخور العُماني المصنوع بأيدٍ عُمانية', image_url: '', price: 10, pick_count: 3,
+      product_ids: s.products.filter(p => p.category === 'incense' || p.category === 'frankincense').map(p => p.id), active: true, created_at: now() }];
     // مبيعات تجريبية لآخر سنتين لعرض الإحصائيات
     for (let d = 0; d < 420; d++) {
       const n = Math.floor(Math.random() * 5);
@@ -139,6 +149,26 @@ function demoBackend() {
   const role = () => sessionStorage.getItem(SKEY);
   const need = r => { const me = role(); if (!me || (r === 'admin' && me !== 'admin')) err('غير مصرح'); return me; };
   window.addEventListener('storage', e => e.key === KEY && window.dispatchEvent(new Event('demo-change')));
+  // نفس منطق build_items في قاعدة البيانات
+  function buildItems(s, list, pub) {
+    if (!list || !list.length) err('السلة فارغة');
+    let total = 0;
+    const items = list.map(i => {
+      if (i.offer_id) {
+        const o = (s.offers || []).find(x => x.id === i.offer_id && (x.active || !pub)); if (!o) err('العرض غير متوفر');
+        if ((i.picks || []).length !== o.pick_count) err(`اختر ${o.pick_count} منتجات للعرض «${o.title}»`);
+        const picks = i.picks.map(id => { const p = s.products.find(x => x.id === id && (x.active || !pub)); if (!p || !o.product_ids.includes(id)) err(`منتج غير مشمول في العرض «${o.title}»`); return { id: p.id, name: p.name, barcode: p.barcode }; });
+        total += o.price; return { offer_id: o.id, name: o.title, price: o.price, qty: 1, picks };
+      }
+      const p = s.products.find(x => x.id === i.id && (x.active || !pub)); if (!p) err('منتج غير متوفر');
+      const qty = pub ? Math.min(99, Math.max(1, i.qty | 0)) : Math.max(1, i.qty | 0); total += p.price * qty;
+      return { id: p.id, name: p.name, barcode: p.barcode, price: p.price, qty };
+    });
+    return { items, total };
+  }
+  function takeStock(s, items) {
+    items.forEach(i => (i.picks ? i.picks.map(x => [x.id, 1]) : [[i.id, i.qty]]).forEach(([id, q]) => { const p = s.products.find(x => x.id === id); if (p) p.stock -= q; }));
+  }
 
   return {
     async getSettings() { return structuredClone(load().settings); },
@@ -168,17 +198,21 @@ function demoBackend() {
     },
     async uploadProductImage(file) { return blobToDataURL(await resizeImage(file, 600, 0.75)); },
 
+    async listOffers() { const me = role(); return structuredClone((load().offers || []).filter(o => me || o.active)); },
+    async saveOffer(o) {
+      need('admin');
+      return tx(s => {
+        s.offers = s.offers || [];
+        if (o.id) { const x = s.offers.find(q => q.id === o.id); Object.assign(x, offerRow(o)); return x; }
+        const x = { id: uid(), ...offerRow(o), created_at: now() }; s.offers.unshift(x); return x;
+      });
+    },
+    async deleteOffer(id) { need('admin'); tx(s => { s.offers = (s.offers || []).filter(o => o.id !== id); }); },
     async placeOrder(o) {
       return tx(s => {
         if ((o.name || '').trim().length < 2) err('الاسم مطلوب');
         if (!/^[0-9+ ]{8,15}$/.test(o.phone)) err('رقم الهاتف غير صحيح');
-        if (!o.items.length) err('السلة فارغة');
-        let total = 0;
-        const items = o.items.map(i => {
-          const p = s.products.find(x => x.id === i.id && x.active); if (!p) err('منتج غير متوفر');
-          const qty = Math.min(99, Math.max(1, i.qty | 0)); total += p.price * qty;
-          return { id: p.id, name: p.name, barcode: p.barcode, price: p.price, qty };
-        });
+        const { items, total } = buildItems(s, o.items, true);
         const order = { id: uid(), order_no: ++s.orderSeq, customer_name: o.name.trim(), customer_phone: o.phone.trim(), fulfillment: o.fulfillment, address: o.address || '', note: o.note || '', items, total, status: 'new', receipt_path: '', created_at: now() };
         s.orders.unshift(order); return { order_no: order.order_no, total };
       });
@@ -193,7 +227,7 @@ function demoBackend() {
       const me = need();
       return tx(s => {
         const o = s.orders.find(x => x.id === id); if (!o || o.status !== 'new') err('الطلب غير متاح للتأكيد');
-        o.items.forEach(i => { const p = s.products.find(x => x.id === i.id); if (p) p.stock -= i.qty; });
+        takeStock(s, o.items);
         o.status = 'paid'; o.handled_at = now();
         const sale = { id: uid(), invoice_no: ++s.invoiceSeq, items: o.items, total: o.total, payment_method: method, source: 'online', order_id: o.id, seller_email: emailFor(me), created_at: now() };
         s.sales.push(sale); return sale;
@@ -205,13 +239,7 @@ function demoBackend() {
     async recordSale(items, method) {
       const me = need();
       return tx(s => {
-        if (!items.length) err('الفاتورة فارغة');
-        let total = 0;
-        const rows = items.map(i => {
-          const p = s.products.find(x => x.id === i.id); if (!p) err('منتج غير موجود');
-          const qty = Math.max(1, i.qty | 0); total += p.price * qty; p.stock -= qty;
-          return { id: p.id, name: p.name, barcode: p.barcode, price: p.price, qty };
-        });
+        const { items: rows, total } = buildItems(s, items, false); takeStock(s, rows);
         const sale = { id: uid(), invoice_no: ++s.invoiceSeq, items: rows, total, payment_method: method, source: 'pos', seller_email: emailFor(me), created_at: now() };
         s.sales.push(sale); return sale;
       });

@@ -139,30 +139,92 @@ create policy sales_read on public.sales for select using (
   or (public.my_role() = 'employee' and seller_email = lower(auth.jwt()->>'email'))
 );
 
+-- ---------- العروض (عدة منتجات بسعر واحد) ----------
+create table if not exists public.offers (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null check (length(title) between 1 and 120),
+  description text not null default '',
+  image_url   text not null default '',
+  price       numeric(10,3) not null check (price >= 0),
+  pick_count  int not null default 3 check (pick_count between 1 and 20),
+  product_ids uuid[] not null default '{}',
+  active      boolean not null default true,
+  created_at  timestamptz not null default now()
+);
+alter table public.offers enable row level security;
+drop policy if exists offers_read  on public.offers;
+drop policy if exists offers_admin on public.offers;
+create policy offers_read  on public.offers for select using (active or public.my_role() is not null);
+create policy offers_admin on public.offers for all using (public.my_role() = 'admin') with check (public.my_role() = 'admin');
+
 -- ---------- الدوال ----------
+-- يحوّل السلة إلى بنود بأسعار قاعدة البيانات. البند إما {id, qty} لمنتج، أو {offer_id, picks:[ids]} لعرض
+drop function if exists public.build_items(jsonb, boolean);
+create or replace function public.build_items(p_items jsonb, p_public boolean, out items jsonb, out total numeric)
+language plpgsql stable security definer set search_path = public as $$
+declare x jsonb; p public.products; o public.offers; pk jsonb; picks jsonb; q int;
+begin
+  items := '[]'; total := 0;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then raise exception 'السلة فارغة'; end if;
+  if jsonb_array_length(p_items) > 60 then raise exception 'عدد البنود كبير'; end if;
+  for x in select * from jsonb_array_elements(p_items) loop
+    if x ? 'offer_id' then
+      select * into o from public.offers where id = (x->>'offer_id')::uuid and (active or not p_public);
+      if not found then raise exception 'العرض غير متوفر'; end if;
+      if jsonb_array_length(coalesce(x->'picks','[]')) <> o.pick_count then raise exception 'اختر % منتجات للعرض «%»', o.pick_count, o.title; end if;
+      picks := '[]';
+      for pk in select * from jsonb_array_elements(x->'picks') loop
+        select * into p from public.products where id = (pk #>> '{}')::uuid and (active or not p_public);
+        if not found or not (p.id = any(o.product_ids)) then raise exception 'منتج غير مشمول في العرض «%»', o.title; end if;
+        picks := picks || jsonb_build_object('id', p.id, 'name', p.name, 'barcode', p.barcode);
+      end loop;
+      items := items || jsonb_build_object('offer_id', o.id, 'name', o.title, 'price', o.price, 'qty', 1, 'picks', picks);
+      total := total + o.price;
+    else
+      q := greatest((x->>'qty')::int, 1);
+      if p_public then q := least(q, 99); end if;
+      select * into p from public.products where id = (x->>'id')::uuid and (active or not p_public);
+      if not found then raise exception 'منتج غير متوفر'; end if;
+      items := items || jsonb_build_object('id', p.id, 'name', p.name, 'barcode', p.barcode, 'price', p.price, 'qty', q);
+      total := total + p.price * q;
+    end if;
+  end loop;
+end $$;
+revoke all on function public.build_items(jsonb, boolean) from public, anon, authenticated;
+
+-- ينقص المخزون حسب البنود (منتجات العروض تُنقص حبة لكل اختيار)
+create or replace function public.take_stock(p_items jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare x jsonb; pk jsonb;
+begin
+  for x in select * from jsonb_array_elements(p_items) loop
+    if x ? 'picks' then
+      for pk in select * from jsonb_array_elements(x->'picks') loop
+        update public.products set stock = stock - 1 where id = (pk->>'id')::uuid;
+      end loop;
+    else
+      update public.products set stock = stock - (x->>'qty')::int where id = (x->>'id')::uuid;
+    end if;
+  end loop;
+end $$;
+revoke all on function public.take_stock(jsonb) from public, anon, authenticated;
+
 -- الزبون يرسل طلباً: الأسعار تُحسب هنا من قاعدة البيانات وليس من جهاز الزبون
 create or replace function public.place_order(
   p_name text, p_phone text, p_fulfillment text, p_address text, p_note text, p_items jsonb)
 returns table(order_no bigint, total numeric)
 language plpgsql security definer set search_path = public as $$
-declare v_items jsonb := '[]'; v_total numeric := 0; r record; p public.products; v_no bigint;
+declare b record; v_no bigint;
 begin
   if length(btrim(coalesce(p_name,''))) < 2 then raise exception 'الاسم مطلوب'; end if;
   if p_phone !~ '^[0-9+ ]{8,15}$' then raise exception 'رقم الهاتف غير صحيح'; end if;
-  if jsonb_array_length(p_items) = 0 or jsonb_array_length(p_items) > 50 then raise exception 'السلة فارغة'; end if;
-  for r in select (x->>'id')::uuid as id, least(greatest((x->>'qty')::int, 1), 99) as qty
-           from jsonb_array_elements(p_items) x loop
-    select * into p from public.products where id = r.id and active;
-    if not found then raise exception 'منتج غير متوفر'; end if;
-    v_items := v_items || jsonb_build_object('id', p.id, 'name', p.name, 'barcode', p.barcode, 'price', p.price, 'qty', r.qty);
-    v_total := v_total + p.price * r.qty;
-  end loop;
+  select * into b from public.build_items(p_items, true);
   insert into public.orders(customer_name, customer_phone, fulfillment, address, note, items, total)
   values (left(btrim(p_name),80), btrim(p_phone),
           case when p_fulfillment = 'delivery' then 'delivery' else 'pickup' end,
-          left(coalesce(p_address,''),300), left(coalesce(p_note,''),300), v_items, v_total)
+          left(coalesce(p_address,''),300), left(coalesce(p_note,''),300), b.items, b.total)
   returning orders.order_no into v_no;
-  return query select v_no, v_total;
+  return query select v_no, b.total;
 end $$;
 
 create or replace function public.attach_receipt(p_order_no bigint, p_phone text, p_path text)
@@ -174,20 +236,13 @@ $$;
 -- بيع من المحل (مسح الباركود)
 create or replace function public.record_sale(p_items jsonb, p_method text)
 returns public.sales language plpgsql security definer set search_path = public as $$
-declare v_items jsonb := '[]'; v_total numeric := 0; r record; p public.products; v public.sales;
+declare b record; v public.sales;
 begin
   if public.my_role() is null then raise exception 'غير مصرح'; end if;
-  if jsonb_array_length(p_items) = 0 then raise exception 'الفاتورة فارغة'; end if;
-  for r in select (x->>'id')::uuid as id, greatest((x->>'qty')::int, 1) as qty
-           from jsonb_array_elements(p_items) x loop
-    select * into p from public.products where id = r.id;
-    if not found then raise exception 'منتج غير موجود'; end if;
-    v_items := v_items || jsonb_build_object('id', p.id, 'name', p.name, 'barcode', p.barcode, 'price', p.price, 'qty', r.qty);
-    v_total := v_total + p.price * r.qty;
-    update public.products set stock = stock - r.qty where id = p.id;
-  end loop;
+  select * into b from public.build_items(p_items, false);
+  perform public.take_stock(b.items);
   insert into public.sales(items, total, payment_method, source, seller_email)
-  values (v_items, v_total, p_method, 'pos', lower(auth.jwt()->>'email'))
+  values (b.items, b.total, p_method, 'pos', lower(auth.jwt()->>'email'))
   returning * into v;
   return v;
 end $$;
@@ -195,14 +250,12 @@ end $$;
 -- تأكيد وصول التحويل لطلب أونلاين: يتحول الطلب إلى عملية بيع
 create or replace function public.confirm_order(p_order uuid, p_method text default 'transfer')
 returns public.sales language plpgsql security definer set search_path = public as $$
-declare o public.orders; x jsonb; v public.sales;
+declare o public.orders; v public.sales;
 begin
   if public.my_role() is null then raise exception 'غير مصرح'; end if;
   select * into o from public.orders where id = p_order for update;
   if not found or o.status <> 'new' then raise exception 'الطلب غير متاح للتأكيد'; end if;
-  for x in select * from jsonb_array_elements(o.items) loop
-    update public.products set stock = stock - (x->>'qty')::int where id = (x->>'id')::uuid;
-  end loop;
+  perform public.take_stock(o.items);
   insert into public.sales(items, total, payment_method, source, order_id, seller_email)
   values (o.items, o.total, p_method, 'online', o.id, lower(auth.jwt()->>'email'))
   returning * into v;

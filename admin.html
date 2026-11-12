@@ -83,7 +83,7 @@
             </div>
           </div>
           <div class="pos-right card pad">
-            <div class="scan-head"><h2>الفاتورة</h2><button class="btn btn-ghost btn-sm" id="clearCart">تفريغ</button></div>
+            <div class="scan-head"><h2>الفاتورة</h2><div style="display:flex;gap:6px"><button class="btn btn-ghost btn-sm" id="offerSale">+ عرض</button><button class="btn btn-ghost btn-sm" id="clearCart">تفريغ</button></div></div>
             <div id="lines" class="lines"></div>
             <div class="total-row"><span>الإجمالي</span><b class="num" id="posTotal">0.000 ر.ع.</b></div>
             <div class="field"><div class="seg" id="payM"><button class="on" data-v="cash">نقداً</button><button data-v="transfer">تحويل</button><button data-v="card">بطاقة</button></div></div>
@@ -104,7 +104,7 @@
       <!-- المنتجات -->
       <section data-view="products" class="view hidden">
         <div class="view-head"><h2>المنتجات</h2>
-          <div class="head-actions"><button class="btn btn-ghost btn-sm" id="importBtn">استيراد من Excel</button><input type="file" id="importFile" accept=".xlsx,.xls,.csv" class="hidden"><button class="btn btn-ghost btn-sm" id="printSel">طباعة ملصقات الباركود</button><button class="btn btn-gold btn-sm" id="addProd">+ منتج جديد</button></div>
+          <div class="head-actions"><button class="btn btn-ghost btn-sm" id="offersBtn">العروض</button><button class="btn btn-ghost btn-sm" id="importBtn">استيراد من Excel</button><input type="file" id="importFile" accept=".xlsx,.xls,.csv" class="hidden"><button class="btn btn-ghost btn-sm" id="printSel">طباعة ملصقات الباركود</button><button class="btn btn-gold btn-sm" id="addProd">+ منتج جديد</button></div>
         </div>
         <div class="filters">
           <input id="prodSearch" type="search" placeholder="بحث بالاسم أو الباركود">

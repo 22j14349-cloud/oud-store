@@ -1,8 +1,8 @@
 import { db, DEMO } from './db.js';
 import { splash, installButton, rememberShopName } from './pwa.js';
-import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask } from './util.js';
+import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask, pickOffer } from './util.js';
 
-const S = { role: null, settings: {}, products: [], cart: new Map(), pay: 'cash', scanner: null, lastScan: { code: '', t: 0 },
+const S = { role: null, settings: {}, products: [], offers: [], bundles: [], cart: new Map(), pay: 'cash', scanner: null, lastScan: { code: '', t: 0 },
   orders: [], ofilter: 'new', seenNew: null, selected: new Set(), period: 'day', chart: null };
 
 // ------------------------------------------------------------ أدوات
@@ -98,7 +98,7 @@ function go(tab) {
 }
 
 async function loadProducts() {
-  try { S.products = await db.listProducts(); } catch (e) { toast(e.message, 'bad'); }
+  try { [S.products, S.offers] = await Promise.all([db.listProducts(), db.listOffers().catch(() => [])]); } catch (e) { toast(e.message, 'bad'); }
 }
 
 // ------------------------------------------------------------ البيع ومسح الباركود
@@ -112,7 +112,8 @@ function setupPOS() {
     $$('#presults .presult').forEach(b => b.onclick = () => { addToCart(S.products.find(p => p.id === b.dataset.id)); $('#psearch').value = ''; $('#presults').innerHTML = ''; });
   };
   $$('#payM button').forEach(b => b.onclick = () => { S.pay = b.dataset.v; $$('#payM button').forEach(x => x.classList.toggle('on', x === b)); });
-  $('#clearCart').onclick = () => { S.cart.clear(); renderCart(); };
+  $('#clearCart').onclick = () => { S.cart.clear(); S.bundles = []; renderCart(); };
+  $('#offerSale').onclick = posOffer;
   $('#checkout').onclick = checkout;
   renderCart();
 }
@@ -156,25 +157,48 @@ function addToCart(p) {
 }
 function renderCart(flashId) {
   const rows = [...S.cart].map(([id, qty]) => ({ p: S.products.find(x => x.id === id), qty })).filter(x => x.p);
-  $('#lines').innerHTML = rows.length ? rows.map(({ p, qty }) => `<div class="line ${p.id === flashId ? 'flash' : ''}" data-id="${p.id}">
+  const bundles = S.bundles.map(b => ({ ...b, o: S.offers.find(o => o.id === b.offer_id) })).filter(b => b.o);
+  const bhtml = bundles.map((b, i) => `<div class="line" data-b="${i}">
+      <div><b>${esc(b.o.title)}</b><small class="muted">${esc(b.picks.map(id => (S.products.find(p => p.id === id) || {}).name).join('، '))}</small></div>
+      <button class="btn btn-ghost btn-sm" data-del>حذف</button>
+      <b class="num gold">${money(b.o.price)}</b></div>`).join('');
+  $('#lines').innerHTML = (rows.length || bundles.length) ? bhtml + rows.map(({ p, qty }) => `<div class="line ${p.id === flashId ? 'flash' : ''}" data-id="${p.id}">
       <div><b>${esc(p.name)}</b><small class="muted num">${money(p.price)}</small></div>
       <span class="qty"><button data-d="-1">−</button><b>${qty}</b><button data-d="1">+</button></span>
       <b class="num gold">${money(p.price * qty)}</b></div>`).join('')
     : `<div class="empty-s">امسح باركود منتج لإضافته إلى الفاتورة</div>`;
-  $$('#lines .line').forEach(l => l.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
+  $$('#lines .line[data-b] [data-del]').forEach(b => b.onclick = () => { S.bundles.splice(Number(b.closest('.line').dataset.b), 1); renderCart(); });
+  $$('#lines .line[data-id]').forEach(l => l.querySelectorAll('[data-d]').forEach(b => b.onclick = () => {
     const q = (S.cart.get(l.dataset.id) || 0) + Number(b.dataset.d);
     q > 0 ? S.cart.set(l.dataset.id, q) : S.cart.delete(l.dataset.id); renderCart();
   }));
-  $('#posTotal').textContent = money(rows.reduce((s, x) => s + x.p.price * x.qty, 0));
-  $('#checkout').disabled = !rows.length;
+  $('#posTotal').textContent = money(rows.reduce((s, x) => s + x.p.price * x.qty, 0) + bundles.reduce((s, b) => s + Number(b.o.price), 0));
+  $('#checkout').disabled = !rows.length && !bundles.length;
+}
+
+async function posOffer() {
+  const list = S.offers.filter(o => o.active);
+  if (!list.length) { toast(S.role === 'admin' ? 'لا توجد عروض. أضفها من المنتجات ← العروض' : 'لا توجد عروض فعّالة', 'bad'); return; }
+  let o = list[0];
+  if (list.length > 1) {
+    o = await new Promise(res => {
+      let done = false;
+      const m = openModal(`<h2>اختر العرض</h2><div class="presults">${list.map(x => `<button class="presult" data-id="${x.id}"><span>${esc(x.title)} <small class="muted">· ${x.pick_count} منتجات</small></span><b class="num gold">${money(x.price)}</b></button>`).join('')}</div>`,
+        { onClose: () => { if (!done) { done = true; res(null); } } });
+      m.el.querySelectorAll('.presult').forEach(b => b.onclick = () => { done = true; res(list.find(x => x.id === b.dataset.id)); m.close(); });
+    });
+    if (!o) return;
+  }
+  const picks = await pickOffer(o, S.products, { checkStock: false, okLabel: 'أضف إلى الفاتورة' });
+  if (picks) { S.bundles.push({ offer_id: o.id, picks }); beep(true); renderCart(); }
 }
 
 async function checkout() {
-  const items = [...S.cart].map(([id, qty]) => ({ id, qty }));
+  const items = [...[...S.cart].map(([id, qty]) => ({ id, qty })), ...S.bundles.map(b => ({ offer_id: b.offer_id, picks: b.picks }))];
   const btn = $('#checkout'); btn.disabled = true;
   try {
     const sale = await db.recordSale(items, S.pay);
-    S.cart.clear(); renderCart(); await loadProducts(); renderMine();
+    S.cart.clear(); S.bundles = []; renderCart(); await loadProducts(); renderMine();
     const m = openModal(`<div style="text-align:center"><div class="success-ico" style="width:70px;height:70px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:rgba(111,191,138,.15);color:var(--ok);font-size:2.2rem">✓</div>
       <h2>تم البيع</h2><p>فاتورة رقم <b class="num">${sale.invoice_no}</b> · <b class="num gold">${money(sale.total)}</b> · ${PAY_METHODS[sale.payment_method]}</p>
       <div style="display:flex;gap:8px;justify-content:center"><button class="btn btn-ghost" data-print>طباعة الفاتورة</button><button class="btn btn-gold" data-ok>بيع جديد</button></div></div>`);
@@ -186,7 +210,7 @@ async function checkout() {
 function printReceipt(sale) {
   printHTML(`<div class="receipt"><h1>${esc(S.settings.shop_name)}</h1><div class="c">سمائل - سلطنة عُمان</div>
     <div class="c">فاتورة رقم ${sale.invoice_no} · ${fmtDate(sale.created_at)}</div>
-    <table>${sale.items.map(i => `<tr><td>${esc(i.name)} × ${i.qty}</td><td style="text-align:left">${money(i.price * i.qty)}</td></tr>`).join('')}</table>
+    <table>${sale.items.map(i => `<tr><td>${esc(i.name)} × ${i.qty}${i.picks ? `<br><small>${esc(i.picks.map(x => x.name).join('، '))}</small>` : ''}</td><td style="text-align:left">${money(i.price * i.qty)}</td></tr>`).join('')}</table>
     <div class="t"><span>الإجمالي</span><span>${money(sale.total)}</span></div>
     <div>طريقة الدفع: ${PAY_METHODS[sale.payment_method]}</div><p class="c">شكراً لزيارتكم</p></div>`);
 }
@@ -224,7 +248,7 @@ function drawOrders() {
     <div><b>${esc(o.customer_name)}</b> · <a class="num" href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a></div>
     <div class="muted">${o.fulfillment === 'delivery' ? 'توصيل: ' + esc(o.address) : 'استلام من المحل'}</div>
     ${o.note ? `<div class="muted">ملاحظة: ${esc(o.note)}</div>` : ''}
-    <ul>${o.items.map(i => `<li><span>${esc(i.name)} × ${i.qty}</span><span class="num">${money(i.price * i.qty)}</span></li>`).join('')}</ul>
+    <ul>${o.items.map(i => `<li><span>${esc(i.name)} × ${i.qty}${i.picks ? `<small class="picks-note">${esc(i.picks.map(x => x.name).join('، '))}</small>` : ''}</span><span class="num">${money(i.price * i.qty)}</span></li>`).join('')}</ul>
     <div class="total-row" style="padding:6px 0;font-size:1.1rem"><span>الإجمالي</span><b class="num" style="font-size:1.3rem">${money(o.total)}</b></div>
     <div class="acts">
       ${o.receipt_path ? '<button class="btn btn-ghost btn-sm" data-rc>عرض الإيصال</button>' : '<span class="muted" style="font-size:.85rem">لم يُرفق إيصال</span>'}
@@ -256,6 +280,7 @@ function setupProducts() {
   $('#addProd').onclick = () => editProduct();
   $('#selAll').onchange = e => { filteredProducts().forEach(p => e.target.checked ? S.selected.add(p.id) : S.selected.delete(p.id)); renderProducts(); };
   $('#printSel').onclick = openPrintLabels;
+  $('#offersBtn').onclick = openOffers;
   $('#importBtn').onclick = () => $('#importFile').click();
   $('#importFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importExcel(f); };
 }
@@ -527,5 +552,79 @@ async function importExcel(file) {
       await loadProducts(); S.selected = new Set(saved.map(x => x.id)); renderProducts(); m.close();
       toast(`تم استيراد ${saved.length} منتجاً وإنشاء باركود لكل منها`);
     } catch (e) { toast(e.message, 'bad'); btn.disabled = false; count(); }
+  };
+}
+
+
+// ------------------------------------------------------------ إدارة العروض
+function openOffers() {
+  const m = openModal(`<div class="view-head" style="margin-top:4px"><h2 style="padding-inline-start:44px">العروض</h2><button class="btn btn-gold btn-sm" id="newOffer">+ عرض جديد</button></div>
+    <p class="muted">العرض يسمح للزبون باختيار عدد معيّن من المنتجات بسعر واحد، مثل «أي 3 حبات بـ 10 ريال».</p>
+    <div id="olist2"></div>`, { wide: true });
+  const draw = () => {
+    m.el.querySelector('#olist2').innerHTML = S.offers.length ? S.offers.map(o => `<div class="card prow ${o.active ? '' : 'off'}" data-id="${o.id}" style="grid-template-columns:72px 1fr auto;margin-bottom:10px">
+      <div class="thumb">${o.image_url ? `<img src="${esc(o.image_url)}" alt="">` : `<div class="ph ph-incense">${icon('burner')}</div>`}</div>
+      <div class="meta"><b>${esc(o.title)}</b><small class="muted">اختر ${o.pick_count} من ${o.product_ids.length} منتجاً</small>
+        <div><b class="num gold">${money(o.price)}</b>${o.active ? '' : ' · <span class="badge">مخفي</span>'}</div></div>
+      <button class="btn btn-ghost btn-sm" data-e>تعديل</button></div>`).join('') : '<div class="empty-s">لا توجد عروض بعد.</div>';
+    m.el.querySelectorAll('#olist2 [data-e]').forEach(b => b.onclick = () => { m.close(); editOffer(S.offers.find(o => o.id === b.closest('.prow').dataset.id)); });
+  };
+  draw();
+  m.el.querySelector('#newOffer').onclick = () => { m.close(); editOffer(); };
+}
+
+function editOffer(o) {
+  const isNew = !o;
+  o = o || { title: '', description: '', price: '', pick_count: 3, product_ids: [], image_url: '', active: true };
+  const chosen = new Set(o.product_ids);
+  const m = openModal(`<h2>${isNew ? 'عرض جديد' : 'تعديل العرض'}</h2>
+    <form id="of">
+      <div class="field"><label for="ot">اسم العرض</label><input id="ot" required maxlength="120" value="${esc(o.title)}" placeholder="مثلاً: أي 3 حبات بخور بـ 10 ريال"></div>
+      <div class="row">
+        <div class="field"><label for="on">عدد المنتجات التي يختارها الزبون</label><input id="on" type="number" min="1" max="20" required value="${o.pick_count}"></div>
+        <div class="field"><label for="op">سعر العرض (ر.ع.)</label><input id="op" type="number" min="0" step="0.001" required inputmode="decimal" value="${o.price}"></div>
+      </div>
+      <div class="field"><label for="od">وصف قصير (اختياري)</label><input id="od" maxlength="200" value="${esc(o.description)}" placeholder="مثلاً: صُنع بأيدٍ عُمانية"></div>
+      <div class="field"><label>صورة العرض</label><div class="img-pick"><div class="thumb" id="oimgv">${o.image_url ? `<img src="${esc(o.image_url)}" alt="">` : `<div class="ph ph-incense">${icon('burner')}</div>`}</div><input id="oimg" type="file" accept="image/*"></div></div>
+      <div class="field"><label>المنتجات المشمولة في العرض <span class="muted" id="ocount"></span></label>
+        <div class="row" style="margin-bottom:8px"><input id="oq" type="search" placeholder="بحث"><select id="oc"><option value="">كل الأقسام</option>${CATEGORIES.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}</select></div>
+        <div style="display:flex;gap:8px;margin-bottom:8px"><button type="button" class="btn btn-ghost btn-sm" id="oall">تحديد الظاهر</button><button type="button" class="btn btn-ghost btn-sm" id="onone">إلغاء الظاهر</button></div>
+        <div class="pick-list" id="oprods" style="max-height:34vh"></div></div>
+      <label class="check field"><input type="checkbox" id="oa" ${o.active ? 'checked' : ''}> يظهر في المتجر</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-gold" id="osave">حفظ العرض</button>${isNew ? '' : '<button type="button" class="btn btn-danger" id="odel">حذف</button>'}</div>
+    </form>`, { wide: true });
+  const el = m.el;
+  const visible = () => {
+    const q = el.querySelector('#oq').value.trim().toLowerCase(), c = el.querySelector('#oc').value;
+    return S.products.filter(p => (!c || p.category === c) && (!q || `${p.name} ${p.size || ''}`.toLowerCase().includes(q))).sort((x, y) => chosen.has(y.id) - chosen.has(x.id));
+  };
+  const draw = () => {
+    el.querySelector('#ocount').textContent = `(${chosen.size} محدد)`;
+    el.querySelector('#oprods').innerHTML = visible().map(p => `<label class="pick ${chosen.has(p.id) ? 'on' : ''}" style="cursor:pointer"><div class="pick-thumb">${productVisual(p)}</div>
+      <div class="pick-meta"><b>${esc(p.name)}</b><small class="muted">${esc(catById(p.category).name)}${p.size ? ' · ' + esc(p.size) : ''} · ${money(p.price)}</small></div>
+      <input type="checkbox" data-id="${p.id}" ${chosen.has(p.id) ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--gold)"></label>`).join('');
+    el.querySelectorAll('#oprods input').forEach(i => i.onchange = () => { i.checked ? chosen.add(i.dataset.id) : chosen.delete(i.dataset.id); i.closest('.pick').classList.toggle('on', i.checked); el.querySelector('#ocount').textContent = `(${chosen.size} محدد)`; });
+  };
+  draw();
+  el.querySelector('#oq').oninput = draw; el.querySelector('#oc').onchange = draw;
+  el.querySelector('#oall').onclick = () => { visible().forEach(p => chosen.add(p.id)); draw(); };
+  el.querySelector('#onone').onclick = () => { visible().forEach(p => chosen.delete(p.id)); draw(); };
+  let file = null;
+  el.querySelector('#oimg').onchange = e => { file = e.target.files[0]; if (file) el.querySelector('#oimgv').innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`; };
+  el.querySelector('#odel')?.addEventListener('click', async () => {
+    if (!(await ask(`حذف العرض «${o.title}»؟`, { ok: 'حذف', danger: true }))) return;
+    try { await db.deleteOffer(o.id); await loadProducts(); m.close(); toast('تم حذف العرض'); } catch (e) { toast(e.message, 'bad'); }
+  });
+  el.querySelector('#of').onsubmit = async e => {
+    e.preventDefault();
+    if (!chosen.size) { toast('حدد المنتجات المشمولة في العرض', 'bad'); return; }
+    const btn = el.querySelector('#osave'); btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
+    try {
+      let image_url = o.image_url;
+      if (file) image_url = await db.uploadProductImage(file);
+      await db.saveOffer({ id: o.id, title: el.querySelector('#ot').value.trim(), description: el.querySelector('#od').value.trim(), price: Number(el.querySelector('#op').value),
+        pick_count: parseInt(el.querySelector('#on').value, 10), product_ids: [...chosen], image_url, active: el.querySelector('#oa').checked });
+      await loadProducts(); m.close(); toast('تم حفظ العرض، ويظهر الآن في المتجر'); openOffers();
+    } catch (er) { toast(er.message, 'bad'); btn.disabled = false; btn.textContent = 'حفظ العرض'; }
   };
 }

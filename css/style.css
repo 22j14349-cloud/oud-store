@@ -161,3 +161,25 @@ input[type=file]::file-selector-button { font: 700 .9rem var(--font); color: #1b
 .install-btn { font-size: .85rem; padding: .5em .9em; }
 @media print { .splash { display: none !important; } }
 .modal > .modal-x + h2, .modal > .modal-x + div h2:first-child { padding-inline-start: 44px; }
+
+/* ---------- مساحة شريط الجوال العلوي (التطبيق المثبت على الآيفون) ---------- */
+.top, .abar { padding-top: env(safe-area-inset-top, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.modal-wrap { padding-top: max(16px, env(safe-area-inset-top, 0px)); padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)); }
+.login { padding-top: max(24px, env(safe-area-inset-top, 0px)); }
+
+/* ---------- العروض ---------- */
+.offer-meter { display: flex; align-items: center; gap: 6px; justify-content: center; padding: 10px; border-radius: 14px; background: rgba(210, 168, 85, .08); border: 1px dashed var(--gold); margin-bottom: 12px; font-size: 1.05rem; }
+.offer-meter #ocnt { color: var(--gold-2); font-size: 1.3rem; }
+.offer-meter .price { margin-inline-start: auto; }
+.pick-list { display: grid; gap: 8px; max-height: 50vh; overflow: auto; margin-bottom: 14px; }
+.pick { display: grid; grid-template-columns: 52px 1fr auto; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 14px; }
+.pick.on { border-color: var(--gold); background: rgba(210, 168, 85, .08); }
+.pick.off { opacity: .5; }
+.pick-thumb { width: 52px; height: 52px; border-radius: 10px; overflow: hidden; }
+.pick-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.pick-meta { min-width: 0; }
+.pick-meta b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick .qty { display: inline-flex; align-items: center; gap: 4px; }
+.pick .qty button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); background: rgba(210, 168, 85, .12); color: var(--gold-2); font-size: 1.2rem; cursor: pointer; }
+.pick .qty b { min-width: 22px; text-align: center; }
+.picks-note { display: block; font-size: .8rem; color: var(--muted); }

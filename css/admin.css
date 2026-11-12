@@ -26,7 +26,7 @@
 .tabs button.on::before { content: ""; position: absolute; top: 0; width: 34px; height: 3px; border-radius: 0 0 3px 3px; background: var(--gold); }
 .dot { position: absolute; top: 6px; inset-inline-end: calc(50% - 20px); min-width: 18px; height: 18px; border-radius: 9px; background: var(--bad); color: #fff; font: 800 .7rem/18px var(--font); font-style: normal; padding: 0 4px; }
 @media (min-width: 960px) {
-  .tabs { position: sticky; top: 60px; bottom: auto; justify-content: center; gap: 6px; border-top: 0; border-bottom: 1px solid var(--line); padding: 6px; }
+  .tabs { position: sticky; top: calc(60px + env(safe-area-inset-top, 0px)); bottom: auto; justify-content: center; gap: 6px; border-top: 0; border-bottom: 1px solid var(--line); padding: 6px; }
   .tabs button { flex: 0 0 auto; flex-direction: row; font-size: .95rem; padding: 8px 18px; border-radius: 999px; gap: 8px; }
   .tabs button.on { background: rgba(210, 168, 85, .12); }
   .tabs button.on::before { display: none; }
