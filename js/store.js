@@ -243,7 +243,7 @@ function showPayment(order) {
       localStorage.setItem('oud_last_order', JSON.stringify({ ...order, done: true }));
       m.el.innerHTML = `<div style="text-align:center;padding:10px 0"><div class="success-ico">✓</div><h2>شكراً لك</h2>
         <p class="muted">سيؤكد المحل وصول التحويل ويتواصل معك على الرقم <b class="num">${esc(order.phone)}</b>.</p>
-        <button class="btn btn-gold" onclick="this.closest('.modal-wrap').click()">العودة للمتجر</button></div>`;
+        <button class="btn btn-gold">العودة للمتجر</button></div>`;
       m.el.querySelector('.btn').onclick = m.close;
     } catch (e) { toast(e.message, 'bad'); btn.disabled = false; btn.textContent = 'تم التحويل'; }
   };
