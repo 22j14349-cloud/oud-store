@@ -110,6 +110,22 @@ create table if not exists public.sales (
   created_at     timestamptz not null default now()
 );
 create index if not exists sales_created_idx on public.sales(created_at);
+alter table public.sales add column if not exists customer_phone text not null default '';
+alter table public.sales add column if not exists customer_name  text not null default '';
+
+-- ---------- الزبائن (لإرسال العروض الحصرية) ----------
+create table if not exists public.customers (
+  phone        text primary key check (phone ~ '^[0-9]{8,15}$'),
+  name         text not null default '',
+  source       text not null default 'manual' check (source in ('online','pos','manual')),
+  opt_in       boolean not null default true,
+  notes        text not null default '',
+  orders_count int not null default 0,
+  total_spent  numeric(12,3) not null default 0,
+  last_at      timestamptz,
+  last_offer_at timestamptz,
+  created_at   timestamptz not null default now()
+);
 
 -- ---------- الحماية (RLS) ----------
 alter table public.staff    enable row level security;
@@ -117,6 +133,16 @@ alter table public.settings enable row level security;
 alter table public.products enable row level security;
 alter table public.orders   enable row level security;
 alter table public.sales    enable row level security;
+alter table public.customers enable row level security;
+
+drop policy if exists customers_staff  on public.customers;
+drop policy if exists customers_insert on public.customers;
+drop policy if exists customers_update on public.customers;
+drop policy if exists customers_delete on public.customers;
+create policy customers_staff  on public.customers for select using (public.my_role() is not null);
+create policy customers_insert on public.customers for insert with check (public.my_role() is not null);
+create policy customers_update on public.customers for update using (public.my_role() is not null);
+create policy customers_delete on public.customers for delete using (public.my_role() = 'admin');
 
 drop policy if exists settings_read  on public.settings;
 drop policy if exists settings_write on public.settings;
@@ -209,9 +235,36 @@ begin
 end $$;
 revoke all on function public.take_stock(jsonb) from public, anon, authenticated;
 
+-- يوحّد رقم الهاتف: أرقام فقط، ويحذف مفتاح عُمان 968 من الأرقام المحلية
+create or replace function public.norm_phone(p text) returns text
+language sql immutable set search_path = public as $$
+  select case when d ~ '^968[0-9]{8}$' then substr(d, 4) when d ~ '^00968[0-9]{8}$' then substr(d, 6) else d end
+  from (select regexp_replace(coalesce(p,''), '[^0-9]', '', 'g') as d) t;
+$$;
+
+-- يحفظ الزبون أو يحدّث بياناته. p_amount > 0 يعني عملية شراء مكتملة
+create or replace function public.touch_customer(p_phone text, p_name text, p_source text, p_amount numeric, p_opt_in boolean default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare ph text := public.norm_phone(p_phone);
+begin
+  if ph !~ '^[0-9]{8,15}$' then return; end if;
+  insert into public.customers as c(phone, name, source, opt_in, orders_count, total_spent, last_at)
+  values (ph, left(btrim(coalesce(p_name,'')),80), p_source, coalesce(p_opt_in, true),
+          case when p_amount > 0 then 1 else 0 end, greatest(coalesce(p_amount,0),0),
+          case when p_amount > 0 then now() end)
+  on conflict (phone) do update set
+    name = case when btrim(coalesce(p_name,'')) <> '' then left(btrim(p_name),80) else c.name end,
+    opt_in = coalesce(p_opt_in, c.opt_in),
+    orders_count = c.orders_count + case when p_amount > 0 then 1 else 0 end,
+    total_spent = c.total_spent + greatest(coalesce(p_amount,0),0),
+    last_at = case when p_amount > 0 then now() else c.last_at end;
+end $$;
+revoke all on function public.touch_customer(text, text, text, numeric, boolean) from public, anon, authenticated;
+
 -- الزبون يرسل طلباً: الأسعار تُحسب هنا من قاعدة البيانات وليس من جهاز الزبون
+drop function if exists public.place_order(text, text, text, text, text, jsonb);
 create or replace function public.place_order(
-  p_name text, p_phone text, p_fulfillment text, p_address text, p_note text, p_items jsonb)
+  p_name text, p_phone text, p_fulfillment text, p_address text, p_note text, p_items jsonb, p_opt_in boolean default true)
 returns table(order_no bigint, total numeric)
 language plpgsql security definer set search_path = public as $$
 declare b record; v_no bigint;
@@ -219,6 +272,7 @@ begin
   if length(btrim(coalesce(p_name,''))) < 2 then raise exception 'الاسم مطلوب'; end if;
   if p_phone !~ '^[0-9+ ]{8,15}$' then raise exception 'رقم الهاتف غير صحيح'; end if;
   select * into b from public.build_items(p_items, true);
+  perform public.touch_customer(p_phone, p_name, 'online', 0, coalesce(p_opt_in, true));
   insert into public.orders(customer_name, customer_phone, fulfillment, address, note, items, total)
   values (left(btrim(p_name),80), btrim(p_phone),
           case when p_fulfillment = 'delivery' then 'delivery' else 'pickup' end,
@@ -234,16 +288,19 @@ returns void language sql security definer set search_path = public as $$
 $$;
 
 -- بيع من المحل (مسح الباركود)
-create or replace function public.record_sale(p_items jsonb, p_method text)
+drop function if exists public.record_sale(jsonb, text);
+create or replace function public.record_sale(p_items jsonb, p_method text, p_phone text default '', p_name text default '')
 returns public.sales language plpgsql security definer set search_path = public as $$
-declare b record; v public.sales;
+declare b record; v public.sales; ph text := public.norm_phone(p_phone);
 begin
   if public.my_role() is null then raise exception 'غير مصرح'; end if;
+  if ph <> '' and ph !~ '^[0-9]{8,15}$' then raise exception 'رقم الهاتف غير صحيح'; end if;
   select * into b from public.build_items(p_items, false);
   perform public.take_stock(b.items);
-  insert into public.sales(items, total, payment_method, source, seller_email)
-  values (b.items, b.total, p_method, 'pos', lower(auth.jwt()->>'email'))
+  insert into public.sales(items, total, payment_method, source, seller_email, customer_phone, customer_name)
+  values (b.items, b.total, p_method, 'pos', lower(auth.jwt()->>'email'), ph, left(btrim(coalesce(p_name,'')),80))
   returning * into v;
+  if ph <> '' then perform public.touch_customer(ph, p_name, 'pos', b.total, null); end if;
   return v;
 end $$;
 
@@ -256,10 +313,12 @@ begin
   select * into o from public.orders where id = p_order for update;
   if not found or o.status <> 'new' then raise exception 'الطلب غير متاح للتأكيد'; end if;
   perform public.take_stock(o.items);
-  insert into public.sales(items, total, payment_method, source, order_id, seller_email)
-  values (o.items, o.total, p_method, 'online', o.id, lower(auth.jwt()->>'email'))
+  insert into public.sales(items, total, payment_method, source, order_id, seller_email, customer_phone, customer_name)
+  values (o.items, o.total, p_method, 'online', o.id, lower(auth.jwt()->>'email'),
+          public.norm_phone(o.customer_phone), o.customer_name)
   returning * into v;
   update public.orders set status = 'paid', handled_at = now() where id = o.id;
+  perform public.touch_customer(o.customer_phone, o.customer_name, 'online', o.total, null);
   return v;
 end $$;
 
@@ -273,13 +332,14 @@ begin
   where lower(email) in (select email from public.staff where role = 'employee');
 end $$;
 
-revoke all on function public.record_sale(jsonb, text) from public, anon;
+revoke all on function public.record_sale(jsonb, text, text, text) from public, anon;
 revoke all on function public.confirm_order(uuid, text) from public, anon;
 revoke all on function public.set_employee_password(text) from public, anon;
-grant execute on function public.record_sale(jsonb, text) to authenticated;
+grant execute on function public.record_sale(jsonb, text, text, text) to authenticated;
 grant execute on function public.confirm_order(uuid, text) to authenticated;
 grant execute on function public.set_employee_password(text) to authenticated;
-grant execute on function public.place_order(text, text, text, text, text, jsonb) to anon, authenticated;
+revoke all on function public.place_order(text, text, text, text, text, jsonb, boolean) from public;
+grant execute on function public.place_order(text, text, text, text, text, jsonb, boolean) to anon, authenticated;
 grant execute on function public.attach_receipt(bigint, text, text) to anon, authenticated;
 
 -- ---------- التخزين (صور المنتجات وإيصالات التحويل) ----------

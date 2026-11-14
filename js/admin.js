@@ -1,6 +1,8 @@
 import { db, DEMO } from './db.js';
 import { splash, installButton, rememberShopName } from './pwa.js';
-import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask, pickOffer } from './util.js';
+import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask, pickOffer, normPhone, waLink } from './util.js';
+import { setupCustomers, renderCustomers, findCustomer, loadCustomers } from './customers.js';
+import { sendInvoice, saleInvoice } from './invoice.js';
 
 const S = { role: null, settings: {}, products: [], offers: [], bundles: [], cart: new Map(), pay: 'cash', scanner: null, lastScan: { code: '', t: 0 },
   orders: [], ofilter: 'new', seenNew: null, selected: new Set(), period: 'day', chart: null };
@@ -79,19 +81,20 @@ async function startApp() {
   $('#logout').onclick = async () => { await stopCamera(); await db.logout(); location.reload(); };
   $$('#tabs button').forEach(b => b.onclick = () => go(b.dataset.t));
   await loadProducts();
-  setupPOS(); setupOrders(); setupProducts(); setupSettings();
+  setupCustomers(S); setupPOS(); setupOrders(); setupProducts(); setupSettings();
   $$('#period button').forEach(b => b.onclick = () => { S.period = b.dataset.v; $$('#period button').forEach(x => x.classList.toggle('on', x === b)); renderStats(); });
   go(location.hash.slice(1) || 'pos');
 }
 
 function go(tab) {
-  if (S.role !== 'admin' && ['products', 'stats', 'settings'].includes(tab)) tab = 'pos';
+  if (S.role !== 'admin' && ['customers', 'products', 'stats', 'settings'].includes(tab)) tab = 'pos';
   $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
   $$('.view').forEach(v => v.classList.toggle('hidden', v.dataset.view !== tab));
   history.replaceState(null, '', '#' + tab);
   if (tab !== 'pos') stopCamera();
   if (tab === 'orders') renderOrders();
   if (tab === 'products') renderProducts();
+  if (tab === 'customers') renderCustomers();
   if (tab === 'stats') renderStats();
   if (tab === 'pos') renderMine();
   window.scrollTo({ top: 0 });
@@ -115,6 +118,8 @@ function setupPOS() {
   $('#clearCart').onclick = () => { S.cart.clear(); S.bundles = []; renderCart(); };
   $('#offerSale').onclick = posOffer;
   $('#checkout').onclick = checkout;
+  // رقم الزبون: إن كان محفوظاً يظهر اسمه تلقائياً
+  $('#cPhone').oninput = e => { const c = findCustomer(e.target.value); if (c && c.name && !$('#cName').value.trim()) $('#cName').value = c.name; };
   renderCart();
 }
 
@@ -195,14 +200,19 @@ async function posOffer() {
 
 async function checkout() {
   const items = [...[...S.cart].map(([id, qty]) => ({ id, qty })), ...S.bundles.map(b => ({ offer_id: b.offer_id, picks: b.picks }))];
+  const phone = normPhone($('#cPhone').value), name = $('#cName').value.trim();
+  if (phone && !/^[0-9]{8,15}$/.test(phone)) { toast('رقم الزبون غير صحيح', 'bad'); return; }
   const btn = $('#checkout'); btn.disabled = true;
   try {
-    const sale = await db.recordSale(items, S.pay);
-    S.cart.clear(); S.bundles = []; renderCart(); await loadProducts(); renderMine();
+    const sale = await db.recordSale(items, S.pay, { phone, name });
+    S.cart.clear(); S.bundles = []; renderCart(); $('#cPhone').value = ''; $('#cName').value = '';
+    await loadProducts(); renderMine(); if (phone) loadCustomers();
     const m = openModal(`<div style="text-align:center"><div class="success-ico" style="width:70px;height:70px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:rgba(111,191,138,.15);color:var(--ok);font-size:2.2rem">✓</div>
       <h2>تم البيع</h2><p>فاتورة رقم <b class="num">${sale.invoice_no}</b> · <b class="num gold">${money(sale.total)}</b> · ${PAY_METHODS[sale.payment_method]}</p>
-      <div style="display:flex;gap:8px;justify-content:center"><button class="btn btn-ghost" data-print>طباعة الفاتورة</button><button class="btn btn-gold" data-ok>بيع جديد</button></div></div>`);
+      ${phone ? `<p class="muted">تم حفظ رقم الزبون <span class="num">${esc(phone)}</span> في قائمة الزبائن</p>` : ''}
+      <div class="inv-acts"><button class="btn btn-ghost" data-print>طباعة</button><button class="btn btn-ghost" data-pdf>فاتورة PDF${phone ? ' / واتساب' : ''}</button><button class="btn btn-gold" data-ok>بيع جديد</button></div></div>`);
     m.el.querySelector('[data-print]').onclick = () => printReceipt(sale);
+    m.el.querySelector('[data-pdf]').onclick = () => { m.close(); sendInvoice(saleInvoice({ ...sale, customer_phone: sale.customer_phone || phone, customer_name: sale.customer_name || name }), S.settings); };
     m.el.querySelector('[data-ok]').onclick = m.close;
   } catch (e) { toast(e.message, 'bad'); btn.disabled = false; }
 }
@@ -252,7 +262,8 @@ function drawOrders() {
     <div class="total-row" style="padding:6px 0;font-size:1.1rem"><span>الإجمالي</span><b class="num" style="font-size:1.3rem">${money(o.total)}</b></div>
     <div class="acts">
       ${o.receipt_path ? '<button class="btn btn-ghost btn-sm" data-rc>عرض الإيصال</button>' : '<span class="muted" style="font-size:.85rem">لم يُرفق إيصال</span>'}
-      <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://wa.me/968${esc(o.customer_phone)}?text=${encodeURIComponent(`مرحباً ${o.customer_name}، بخصوص طلبك رقم ${o.order_no} من ${S.settings.shop_name}`)}">واتساب</a>
+      <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="${esc(waLink(o.customer_phone, `مرحباً ${o.customer_name}، بخصوص طلبك رقم ${o.order_no} من ${S.settings.shop_name}`))}">واتساب</a>
+      ${o.status === 'paid' ? '<button class="btn btn-ghost btn-sm" data-pdf>فاتورة PDF</button>' : ''}
       ${o.status === 'new' ? '<button class="btn btn-ok btn-sm" data-ok>تأكيد وصول التحويل</button><button class="btn btn-danger btn-sm" data-x>إلغاء</button>' : ''}
     </div></article>`).join('') : `<div class="empty-s card pad">لا توجد طلبات ${S.ofilter === 'new' ? 'جديدة' : ''}</div>`;
   $$('#olist .order').forEach(c => {
@@ -263,14 +274,25 @@ function drawOrders() {
     });
     c.querySelector('[data-ok]')?.addEventListener('click', async () => {
       if (!(await ask(`تأكيد استلام ${money(o.total)} للطلب #${o.order_no}؟ سيُسجّل كعملية بيع.`, { ok: 'نعم، وصل التحويل' }))) return;
-      try { await db.confirmOrder(o.id, 'transfer'); toast('تم تأكيد الطلب وتسجيله في المبيعات'); await loadProducts(); renderOrders(); }
-      catch (e) { toast(e.message, 'bad'); }
+      let sale;
+      try { sale = await db.confirmOrder(o.id, 'transfer'); toast('تم تأكيد الطلب وتسجيله في المبيعات'); await loadProducts(); renderOrders(); }
+      catch (e) { toast(e.message, 'bad'); return; }
+      if (await ask(`إرسال الفاتورة PDF إلى ${o.customer_name} على واتساب؟`, { ok: 'نعم، جهّز الفاتورة', cancel: 'لاحقاً' })) sendInvoice(orderInvoice(o, sale), S.settings);
+    });
+    c.querySelector('[data-pdf]')?.addEventListener('click', async () => {
+      const sale = await db.saleByOrder(o.id).catch(() => null);
+      sendInvoice(orderInvoice(o, sale), S.settings);
     });
     c.querySelector('[data-x]')?.addEventListener('click', async () => {
       if (!(await ask(`إلغاء الطلب #${o.order_no}؟`, { ok: 'إلغاء الطلب', danger: true }))) return;
       try { await db.cancelOrder(o.id); renderOrders(); } catch (e) { toast(e.message, 'bad'); }
     });
   });
+}
+
+function orderInvoice(o, sale) {
+  return sale ? saleInvoice({ ...sale, customer_name: sale.customer_name || o.customer_name, customer_phone: sale.customer_phone || o.customer_phone })
+    : { no: o.order_no, label: 'طلب رقم', date: o.handled_at || o.created_at, items: o.items, total: o.total, method: 'transfer', customer_name: o.customer_name, customer_phone: o.customer_phone };
 }
 
 // ------------------------------------------------------------ المنتجات والباركود
@@ -444,7 +466,8 @@ async function renderStats() {
   $('#low').innerHTML = low.length ? low.map(p => `<div class="rank"><span>${esc(p.name)}</span><b class="${p.stock <= 0 ? 'down' : 'gold'}">${p.stock}</b></div>`).join('') : '<p class="muted">كل المنتجات متوفرة</p>';
 
   const recent = sales.slice(-8).reverse();
-  $('#recent').innerHTML = recent.length ? recent.map(s => `<div class="rank"><span>#${s.invoice_no} · ${s.source === 'online' ? 'أونلاين' : 'المحل'} · <small class="muted">${fmtDate(s.created_at)}</small></span><b class="num gold">${money(s.total)}</b></div>`).join('') : '<p class="muted">لا توجد فواتير</p>';
+  $('#recent').innerHTML = recent.length ? recent.map((s, i) => `<div class="rank"><span>#${s.invoice_no} · ${s.source === 'online' ? 'أونلاين' : 'المحل'}${s.customer_name ? ' · ' + esc(s.customer_name) : ''} · <small class="muted">${fmtDate(s.created_at)}</small></span><span style="display:flex;gap:6px;align-items:center"><b class="num gold">${money(s.total)}</b><button class="btn btn-ghost btn-sm" data-inv="${i}" title="فاتورة PDF">PDF</button></span></div>`).join('') : '<p class="muted">لا توجد فواتير</p>';
+  $$('#recent [data-inv]').forEach(b => b.onclick = () => sendInvoice(saleInvoice(recent[Number(b.dataset.inv)]), S.settings));
 }
 
 // ------------------------------------------------------------ الإعدادات

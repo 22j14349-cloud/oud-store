@@ -12,6 +12,18 @@ export const money = n => `${Number(n || 0).toLocaleString('en-US', { minimumFra
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// يوحّد رقم الهاتف: أرقام فقط (يقبل الأرقام العربية)، ويحذف مفتاح عُمان من الأرقام المحلية
+export function normPhone(p) {
+  let d = String(p ?? '').replace(/[٠-٩]/g, c => '٠١٢٣٤٥٦٧٨٩'.indexOf(c)).replace(/[۰-۹]/g, c => '۰۱۲۳۴۵۶۷۸۹'.indexOf(c)).replace(/\D/g, '');
+  if (/^00968\d{8}$/.test(d)) d = d.slice(5); else if (/^968\d{8}$/.test(d)) d = d.slice(3);
+  return d;
+}
+// رابط واتساب: الأرقام المحلية (8 أرقام) يُضاف لها مفتاح عُمان
+export function waLink(phone, text = '') {
+  const d = normPhone(phone); const full = d.length === 8 ? '968' + d : d;
+  return `https://wa.me/${full}${text ? '?text=' + encodeURIComponent(text) : ''}`;
+}
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -88,7 +100,9 @@ export function openModal(html, { wide = false, onClose } = {}) {
   wrap.className = 'modal-wrap';
   wrap.innerHTML = `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
     <button class="modal-x" aria-label="إغلاق">×</button>${html}</div>`;
-  const close = () => { wrap.classList.add('out'); setTimeout(() => wrap.remove(), 200); onClose && onClose(); };
+  const onKey = e => { if (e.key === 'Escape' && [...document.querySelectorAll('.modal-wrap:not(.out)')].pop() === wrap) close(); };
+  const close = () => { document.removeEventListener('keydown', onKey); wrap.classList.add('out'); setTimeout(() => wrap.remove(), 200); onClose && onClose(); };
+  document.addEventListener('keydown', onKey);
   wrap.addEventListener('click', e => { if (e.target === wrap || e.target.closest('.modal-x')) close(); });
   document.body.append(wrap);
   return { el: wrap.querySelector('.modal'), close };

@@ -185,6 +185,7 @@ function openCheckout() {
       <div class="field"><label>طريقة الاستلام</label><div class="seg" id="ful"><button type="button" class="on" data-v="pickup">استلام من المحل</button><button type="button" data-v="delivery">توصيل</button></div></div>
       <div class="field hidden" id="addrF"><label for="ad">العنوان</label><textarea id="ad" placeholder="الولاية، المنطقة، أقرب معلم">${esc(saved.address || '')}</textarea></div>
       <div class="field"><label for="nt">ملاحظات (اختياري)</label><input id="nt" placeholder="مثلاً: تغليف هدية"></div>
+      <label class="check field" style="font-size:.9rem"><input type="checkbox" id="oi" ${saved.optIn === false ? '' : 'checked'}> أرغب باستلام العروض الحصرية على واتساب</label>
       <div class="cart-total"><span>المبلغ</span><span class="price num">${money(cartTotal())}</span></div>
       <button class="btn btn-gold btn-block" id="send">إرسال الطلب</button>
     </form>`);
@@ -196,15 +197,15 @@ function openCheckout() {
   m.el.querySelector('#f').onsubmit = async e => {
     e.preventDefault();
     const name = m.el.querySelector('#n').value.trim(), phone = normPhone(m.el.querySelector('#ph').value);
-    const address = m.el.querySelector('#ad').value.trim(), note = m.el.querySelector('#nt').value.trim();
+    const address = m.el.querySelector('#ad').value.trim(), note = m.el.querySelector('#nt').value.trim(), optIn = m.el.querySelector('#oi').checked;
     if (!/^[79]\d{7}$/.test(phone)) { toast('أدخل رقم هاتف عُماني صحيح من 8 أرقام', 'bad'); return; }
     if (ful === 'delivery' && address.length < 4) { toast('أدخل عنوان التوصيل', 'bad'); return; }
     const btn = m.el.querySelector('#send'); btn.disabled = true; btn.textContent = 'جارٍ الإرسال…';
     try {
       const items = [...cartItems().map(({ p, qty }) => ({ id: p.id, qty })), ...state.bundles.map(b => ({ offer_id: b.offer_id, picks: b.picks }))];
       const lines = [...cartItems().map(({ p, qty }) => `${p.name} × ${qty}`), ...state.bundles.map(b => `${offerOf(b).title}: ${offerPickNames(b, state.products).join('، ')}`)];
-      const r = await db.placeOrder({ name, phone, fulfillment: ful, address, note, items });
-      localStorage.setItem('oud_customer', JSON.stringify({ name, phone, address }));
+      const r = await db.placeOrder({ name, phone, fulfillment: ful, address, note, items, optIn });
+      localStorage.setItem('oud_customer', JSON.stringify({ name, phone, address, optIn }));
       const order = { order_no: Number(r.order_no), total: Number(r.total), phone, name, lines, at: Date.now() };
       localStorage.setItem('oud_last_order', JSON.stringify(order));
       state.cart = {}; state.bundles = []; saveCart(); renderGrid(); m.close(); showPayment(order);

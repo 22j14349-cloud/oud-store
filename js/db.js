@@ -1,6 +1,6 @@
 // طبقة البيانات: Supabase عند توفر الإعدادات، وإلا وضع تجريبي محلي في المتصفح
 import { CONFIG } from './config.js';
-import { ean13, resizeImage, blobToDataURL } from './util.js';
+import { ean13, resizeImage, blobToDataURL, normPhone } from './util.js';
 
 export const DEMO = !(CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY);
 
@@ -10,6 +10,12 @@ const offerRow = o => ({ title: o.title, description: o.description || '', image
 const productRow = p => ({ name: p.name, category: p.category, subtype: p.subtype || '', size: p.size || '', description: p.description || '',
   price: Number(p.price), old_price: Number(p.old_price) > Number(p.price) ? Number(p.old_price) : null,
   stock: Number(p.stock) || 0, image_url: p.image_url || '', active: p.active !== false });
+const customerRow = c => {
+  const phone = normPhone(c.phone);
+  if (!/^[0-9]{8,15}$/.test(phone)) err(`رقم غير صحيح: ${c.phone || ''}`);
+  return { phone, name: String(c.name || '').trim().slice(0, 80), notes: String(c.notes || '').slice(0, 300), opt_in: c.opt_in !== false };
+};
+const dedupe = rows => [...new Map(rows.map(r => [r.phone, r])).values()];
 const emailFor = role => (role === 'admin' ? CONFIG.ADMIN_EMAIL : CONFIG.EMPLOYEE_EMAIL).toLowerCase();
 
 // ============================== Supabase ==============================
@@ -53,7 +59,7 @@ function supabaseBackend() {
     },
     async deleteOffer(id) { ok(await sb.from('offers').delete().eq('id', id)); },
     async placeOrder(o) {
-      const rows = ok(await sb.rpc('place_order', { p_name: o.name, p_phone: o.phone, p_fulfillment: o.fulfillment, p_address: o.address || '', p_note: o.note || '', p_items: o.items }));
+      const rows = ok(await sb.rpc('place_order', { p_name: o.name, p_phone: o.phone, p_fulfillment: o.fulfillment, p_address: o.address || '', p_note: o.note || '', p_items: o.items, p_opt_in: o.optIn !== false }));
       return rows[0];
     },
     async attachReceipt(orderNo, phone, file) {
@@ -71,7 +77,34 @@ function supabaseBackend() {
       return () => sb.removeChannel(ch);
     },
 
-    async recordSale(items, method) { return ok(await sb.rpc('record_sale', { p_items: items, p_method: method })); },
+    async recordSale(items, method, cust = {}) { return ok(await sb.rpc('record_sale', { p_items: items, p_method: method, p_phone: normPhone(cust.phone), p_name: cust.name || '' })); },
+
+    async listCustomers() {
+      const all = []; const size = 1000;
+      for (let i = 0; ; i += size) {
+        const page = ok(await sb.from('customers').select('*').order('created_at', { ascending: false }).range(i, i + size - 1));
+        all.push(...page); if (page.length < size) break;
+      }
+      return all;
+    },
+    async saveCustomer(c, oldPhone) {
+      const row = customerRow(c);
+      if (oldPhone) return ok(await sb.from('customers').update(row).eq('phone', oldPhone).select().single());
+      if (ok(await sb.from('customers').select('phone').eq('phone', row.phone)).length) throw new Error('هذا الرقم محفوظ مسبقاً');
+      return ok(await sb.from('customers').insert({ ...row, source: 'manual' }).select().single());
+    },
+    async importCustomers(list) {
+      const rows = dedupe(list.map(customerRow));
+      const have = new Set((await this.listCustomers()).map(c => c.phone));
+      const fresh = rows.filter(r => !have.has(r.phone)).map(r => ({ ...r, source: 'manual' }));
+      for (let i = 0; i < fresh.length; i += 500) ok(await sb.from('customers').insert(fresh.slice(i, i + 500)));
+      return fresh.length;
+    },
+    async deleteCustomer(phone) { ok(await sb.from('customers').delete().eq('phone', phone)); },
+    async markOffered(phones) {
+      for (let i = 0; i < phones.length; i += 200) ok(await sb.from('customers').update({ last_offer_at: new Date().toISOString() }).in('phone', phones.slice(i, i + 200)));
+    },
+    async saleByOrder(orderId) { return ok(await sb.from('sales').select('*').eq('order_id', orderId).maybeSingle()); },
     async listSales(from, to) {
       const all = []; const size = 1000;
       for (let i = 0; ; i += size) {
@@ -166,6 +199,16 @@ function demoBackend() {
     });
     return { items, total };
   }
+  // نفس منطق touch_customer في قاعدة البيانات
+  function touch(s, phone, name, source, amount, optIn) {
+    const ph = normPhone(phone); if (!/^[0-9]{8,15}$/.test(ph)) return;
+    s.customers = s.customers || [];
+    let c = s.customers.find(x => x.phone === ph);
+    if (!c) { c = { phone: ph, name: '', source, opt_in: true, notes: '', orders_count: 0, total_spent: 0, last_at: null, last_offer_at: null, created_at: now() }; s.customers.push(c); }
+    if ((name || '').trim()) c.name = name.trim().slice(0, 80);
+    if (optIn !== null && optIn !== undefined) c.opt_in = optIn;
+    if (amount > 0) { c.orders_count++; c.total_spent = Math.round((c.total_spent + amount) * 1000) / 1000; c.last_at = now(); }
+  }
   function takeStock(s, items) {
     items.forEach(i => (i.picks ? i.picks.map(x => [x.id, 1]) : [[i.id, i.qty]]).forEach(([id, q]) => { const p = s.products.find(x => x.id === id); if (p) p.stock -= q; }));
   }
@@ -214,7 +257,8 @@ function demoBackend() {
         if (!/^[0-9+ ]{8,15}$/.test(o.phone)) err('رقم الهاتف غير صحيح');
         const { items, total } = buildItems(s, o.items, true);
         const order = { id: uid(), order_no: ++s.orderSeq, customer_name: o.name.trim(), customer_phone: o.phone.trim(), fulfillment: o.fulfillment, address: o.address || '', note: o.note || '', items, total, status: 'new', receipt_path: '', created_at: now() };
-        s.orders.unshift(order); return { order_no: order.order_no, total };
+        s.orders.unshift(order); touch(s, o.phone, o.name, 'online', 0, o.optIn !== false);
+        return { order_no: order.order_no, total };
       });
     },
     async attachReceipt(orderNo, phone, file) {
@@ -229,21 +273,50 @@ function demoBackend() {
         const o = s.orders.find(x => x.id === id); if (!o || o.status !== 'new') err('الطلب غير متاح للتأكيد');
         takeStock(s, o.items);
         o.status = 'paid'; o.handled_at = now();
-        const sale = { id: uid(), invoice_no: ++s.invoiceSeq, items: o.items, total: o.total, payment_method: method, source: 'online', order_id: o.id, seller_email: emailFor(me), created_at: now() };
-        s.sales.push(sale); return sale;
+        const sale = { id: uid(), invoice_no: ++s.invoiceSeq, items: o.items, total: o.total, payment_method: method, source: 'online', order_id: o.id, seller_email: emailFor(me), customer_phone: normPhone(o.customer_phone), customer_name: o.customer_name, created_at: now() };
+        s.sales.push(sale); touch(s, o.customer_phone, o.customer_name, 'online', o.total, null); return sale;
       });
     },
     async cancelOrder(id) { need(); tx(s => { const o = s.orders.find(x => x.id === id); if (o) { o.status = 'cancelled'; o.handled_at = now(); } }); },
     onOrdersChange(cb) { const h = () => cb({}); window.addEventListener('demo-change', h); return () => window.removeEventListener('demo-change', h); },
 
-    async recordSale(items, method) {
-      const me = need();
+    async recordSale(items, method, cust = {}) {
+      const me = need(); const ph = normPhone(cust.phone);
+      if (ph && !/^[0-9]{8,15}$/.test(ph)) err('رقم الهاتف غير صحيح');
       return tx(s => {
         const { items: rows, total } = buildItems(s, items, false); takeStock(s, rows);
-        const sale = { id: uid(), invoice_no: ++s.invoiceSeq, items: rows, total, payment_method: method, source: 'pos', seller_email: emailFor(me), created_at: now() };
-        s.sales.push(sale); return sale;
+        const sale = { id: uid(), invoice_no: ++s.invoiceSeq, items: rows, total, payment_method: method, source: 'pos', seller_email: emailFor(me), customer_phone: ph, customer_name: (cust.name || '').trim(), created_at: now() };
+        s.sales.push(sale);
+        if (ph) touch(s, ph, cust.name, 'pos', total, null);
+        return sale;
       });
     },
+
+    async listCustomers() { need(); return structuredClone((load().customers || []).slice().sort((a, b) => b.created_at.localeCompare(a.created_at))); },
+    async saveCustomer(c, oldPhone) {
+      need(); const row = customerRow(c);
+      return tx(s => {
+        s.customers = s.customers || [];
+        if (oldPhone) {
+          if (row.phone !== oldPhone && s.customers.some(x => x.phone === row.phone)) err('هذا الرقم محفوظ مسبقاً');
+          const x = s.customers.find(q => q.phone === oldPhone); Object.assign(x, row); return x;
+        }
+        if (s.customers.some(x => x.phone === row.phone)) err('هذا الرقم محفوظ مسبقاً');
+        const x = { ...row, source: 'manual', orders_count: 0, total_spent: 0, last_at: null, last_offer_at: null, created_at: now() };
+        s.customers.push(x); return x;
+      });
+    },
+    async importCustomers(list) {
+      need(); const rows = dedupe(list.map(customerRow));
+      return tx(s => {
+        s.customers = s.customers || []; let n = 0;
+        rows.forEach(r => { if (!s.customers.some(x => x.phone === r.phone)) { s.customers.push({ ...r, source: 'manual', orders_count: 0, total_spent: 0, last_at: null, last_offer_at: null, created_at: now() }); n++; } });
+        return n;
+      });
+    },
+    async deleteCustomer(phone) { need('admin'); tx(s => { s.customers = (s.customers || []).filter(c => c.phone !== phone); }); },
+    async markOffered(phones) { need(); tx(s => (s.customers || []).forEach(c => { if (phones.includes(c.phone)) c.last_offer_at = now(); })); },
+    async saleByOrder(orderId) { need(); return structuredClone(load().sales.find(x => x.order_id === orderId) || null); },
     async listSales(from, to) {
       const me = need(); const a = from.toISOString(), b = to.toISOString();
       return structuredClone(load().sales.filter(x => x.created_at >= a && x.created_at < b && (me === 'admin' || x.seller_email === emailFor(me))));
