@@ -59,7 +59,11 @@ function supabaseBackend() {
     },
     async deleteOffer(id) { ok(await sb.from('offers').delete().eq('id', id)); },
     async placeOrder(o) {
-      const rows = ok(await sb.rpc('place_order', { p_name: o.name, p_phone: o.phone, p_fulfillment: o.fulfillment, p_address: o.address || '', p_note: o.note || '', p_items: o.items, p_opt_in: o.optIn !== false }));
+      const args = { p_name: o.name, p_phone: o.phone, p_fulfillment: o.fulfillment, p_address: o.address || '', p_note: o.note || '', p_items: o.items };
+      // إن لم تُحدَّث قاعدة البيانات بعد (schema.sql) نرسل الطلب بالصيغة القديمة حتى لا تتوقف الطلبات
+      let r = await sb.rpc('place_order', { ...args, p_opt_in: o.optIn !== false });
+      if (r.error?.code === 'PGRST202') r = await sb.rpc('place_order', args);
+      const rows = ok(r);
       return rows[0];
     },
     async attachReceipt(orderNo, phone, file) {
@@ -77,7 +81,11 @@ function supabaseBackend() {
       return () => sb.removeChannel(ch);
     },
 
-    async recordSale(items, method, cust = {}) { return ok(await sb.rpc('record_sale', { p_items: items, p_method: method, p_phone: normPhone(cust.phone), p_name: cust.name || '' })); },
+    async recordSale(items, method, cust = {}) {
+      let r = await sb.rpc('record_sale', { p_items: items, p_method: method, p_phone: normPhone(cust.phone), p_name: cust.name || '' });
+      if (r.error?.code === 'PGRST202') r = await sb.rpc('record_sale', { p_items: items, p_method: method });
+      return ok(r);
+    },
 
     async listCustomers() {
       const all = []; const size = 1000;
