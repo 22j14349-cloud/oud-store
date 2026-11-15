@@ -65,10 +65,17 @@ function showLogin() {
   $$('.role').forEach(b => b.onclick = () => { role = b.dataset.r; $$('.role').forEach(x => x.classList.toggle('on', x === b)); $('#pw').focus(); });
   $('#loginForm').onsubmit = async e => {
     e.preventDefault();
-    const btn = e.target.querySelector('button'); btn.disabled = true;
-    try { S.role = await db.login(role, $('#pw').value); $('#pw').value = ''; safeStart(); }
-    catch (er) { toast(er.message.includes('Invalid') ? 'كلمة المرور غير صحيحة' : er.message, 'bad'); }
-    btn.disabled = false;
+    const btn = e.target.querySelector('button'); btn.disabled = true; btn.textContent = 'جارٍ الدخول…';
+    // مهلة 20 ثانية حتى لا يبقى الزر معلقاً إذا لم ترد قاعدة البيانات
+    const slow = new Promise((_, rej) => setTimeout(() => rej(new Error('لم ترد قاعدة البيانات. تأكد من الإنترنت ثم أغلق التطبيق وافتحه وحاول مرة أخرى')), 20000));
+    try { S.role = await Promise.race([db.login(role, $('#pw').value), slow]); $('#pw').value = ''; safeStart(); }
+    catch (er) {
+      const m = er.message || '';
+      toast(/Invalid login credentials/i.test(m) ? `كلمة مرور ${role === 'admin' ? 'صاحب المحل' : 'الموظف'} غير صحيحة`
+        : /api key|JWT|apikey/i.test(m) ? 'مفتاح الربط بقاعدة البيانات غير صالح: ' + m
+        : /fetch|network|load failed/i.test(m) ? 'تعذر الاتصال بقاعدة البيانات، تأكد من الإنترنت' : m, 'bad');
+    }
+    btn.disabled = false; btn.textContent = 'دخول';
   };
 }
 
