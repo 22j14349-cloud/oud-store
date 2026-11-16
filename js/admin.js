@@ -3,6 +3,7 @@ import { splash, installButton, rememberShopName } from './pwa.js';
 import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask, pickOffer, normPhone, waLink } from './util.js';
 import { setupCustomers, renderCustomers, findCustomer, loadCustomers } from './customers.js';
 import { sendInvoice, saleInvoice } from './invoice.js';
+import { PHOTOS, photoUrl, autoLinkPhotos } from './photos.js';
 
 const S = { role: null, settings: {}, products: [], offers: [], bundles: [], cart: new Map(), pay: 'cash', scanner: null, lastScan: { code: '', t: 0 },
   orders: [], ofilter: 'new', seenNew: null, selected: new Set(), period: 'day', chart: null };
@@ -91,6 +92,8 @@ async function startApp() {
   setupCustomers(S); setupPOS(); setupOrders(); setupProducts(); setupSettings();
   $$('#period button').forEach(b => b.onclick = () => { S.period = b.dataset.v; $$('#period button').forEach(x => x.classList.toggle('on', x === b)); renderStats(); });
   go(location.hash.slice(1) || 'pos');
+  // صور المنتجات الجاهزة تُربط تلقائياً بالمنتجات التي ليس لها صورة
+  if (admin && S.products.length) autoLinkPhotos(db, S.products).then(async n => { if (n) { await loadProducts(); renderProducts(); } }).catch(() => {});
 }
 
 function go(tab) {
@@ -353,7 +356,7 @@ function editProduct(p) {
         <div class="field"><label for="fq">الكمية في المخزون</label><input id="fq" type="number" step="1" inputmode="numeric" value="${p.stock}"></div>
       </div>
       <div class="field"><label for="fd">الوصف</label><textarea id="fd" maxlength="600">${esc(p.description)}</textarea></div>
-      <div class="field"><label>صورة المنتج</label><div class="img-pick"><div class="thumb" id="fimgv">${productVisual(p)}</div><input id="fimg" type="file" accept="image/*"></div></div>
+      <div class="field"><label>صورة المنتج</label><div class="img-pick"><div class="thumb" id="fimgv">${productVisual(p)}</div><div><input id="fimg" type="file" accept="image/*"><button type="button" class="btn btn-ghost btn-sm" id="fgal" style="margin-top:8px">اختر من الصور الجاهزة</button></div></div></div>
       <div class="field"><label for="fb">الباركود</label>
         <input id="fb" inputmode="numeric" value="${esc(p.barcode || '')}" placeholder="اتركه فارغاً لإنشاء باركود تلقائياً">
         <small class="muted">إذا كان على المنتج باركود من المصنع اكتبه هنا أو امسحه، وإلا سيُنشأ باركود جديد للطباعة.</small>
@@ -366,8 +369,15 @@ function editProduct(p) {
     </form>`);
   const el = m.el, fillSubs = () => el.querySelector('#subl').innerHTML = catById(el.querySelector('#fc').value).subtypes.map(s => `<option value="${s}">`).join('');
   fillSubs(); el.querySelector('#fc').onchange = fillSubs;
-  let file = null;
-  el.querySelector('#fimg').onchange = e => { file = e.target.files[0]; if (file) el.querySelector('#fimgv').innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`; };
+  let file = null, picked = '';
+  el.querySelector('#fimg').onchange = e => { file = e.target.files[0]; if (file) { picked = ''; el.querySelector('#fimgv').innerHTML = `<img src="${URL.createObjectURL(file)}" alt="">`; } };
+  el.querySelector('#fgal').onclick = () => {
+    const g = openModal(`<h2>الصور الجاهزة</h2><div class="gal">${PHOTOS.map((ph, i) => `<button type="button" data-i="${i}"><img src="${photoUrl(ph)}" alt="" loading="lazy"><span>${esc(ph.label)}</span></button>`).join('')}</div>`, { wide: true });
+    $$('.gal button', g.el).forEach(b => b.onclick = () => {
+      picked = photoUrl(PHOTOS[Number(b.dataset.i)]); file = null; el.querySelector('#fimg').value = '';
+      el.querySelector('#fimgv').innerHTML = `<img src="${picked}" alt="">`; g.close();
+    });
+  };
   el.querySelector('#fprint')?.addEventListener('click', () => { m.close(); S.selected = new Set([p.id]); openPrintLabels(); });
   el.querySelector('#fdel')?.addEventListener('click', async () => {
     if (!(await ask(`حذف «${p.name}» نهائياً؟ يمكنك بدلاً من ذلك إخفاؤه من المتجر.`, { ok: 'حذف', danger: true }))) return;
@@ -377,7 +387,7 @@ function editProduct(p) {
     e.preventDefault();
     const btn = el.querySelector('#fsave'); btn.disabled = true; btn.textContent = 'جارٍ الحفظ…';
     try {
-      let image_url = p.image_url;
+      let image_url = picked || p.image_url;
       if (file) image_url = await db.uploadProductImage(file);
       const saved = await db.saveProduct({ id: p.id, name: el.querySelector('#fn').value.trim(), category: el.querySelector('#fc').value, subtype: el.querySelector('#fs').value.trim(),
         price: Number(el.querySelector('#fp').value), old_price: el.querySelector('#fo').value, size: el.querySelector('#fz').value.trim(), stock: parseInt(el.querySelector('#fq').value || '0', 10), description: el.querySelector('#fd').value.trim(),
