@@ -1,6 +1,6 @@
 import { db, DEMO } from './db.js';
 import { splash, installButton, rememberShopName } from './pwa.js';
-import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask, pickOffer, normPhone, waLink } from './util.js';
+import { CATEGORIES, catById, PAY_METHODS, money, esc, $, $$, toast, beep, icon, productVisual, openModal, fmtDate, ean13, ask, pickOffer, normPhone, waLink, logoImg } from './util.js';
 import { setupCustomers, renderCustomers, findCustomer, loadCustomers } from './customers.js';
 import { sendInvoice, saleInvoice } from './invoice.js';
 import { PHOTOS, photoUrl, autoLinkPhotos } from './photos.js';
@@ -36,7 +36,7 @@ function printHTML(html) {
 async function init() {
   splash('admin'); installButton($('#installBtn')); installButton($('#installBtn2'));
   if (DEMO) { $('#demo').classList.remove('hidden'); $('#demoReset').classList.remove('hidden'); }
-  $('#loginMark').innerHTML = icon('logo'); $('#appMark').innerHTML = icon('logo');
+  $('#loginMark').innerHTML = logoImg(true); $('#appMark').innerHTML = logoImg();
   setShopName();
   S.settingsReady = loadSettings();
   S.role = await db.currentRole().catch(() => null);

@@ -1,6 +1,6 @@
 import { db, DEMO } from './db.js';
 import { splash, installButton, rememberShopName } from './pwa.js';
-import { CATEGORIES, catById, money, esc, $, $$, toast, icon, productVisual, openModal, pickOffer, offerPickNames } from './util.js';
+import { CATEGORIES, catById, money, esc, $, $$, toast, icon, productVisual, openModal, pickOffer, offerPickNames, logoImg } from './util.js';
 
 const HERO_ART = `<svg viewBox="0 0 400 400" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
   <defs><radialGradient id="glow" cx="50%" cy="70%" r="50%"><stop offset="0" stop-color="#d2a855" stop-opacity=".35"/><stop offset="1" stop-color="#d2a855" stop-opacity="0"/></radialGradient></defs>
@@ -33,9 +33,9 @@ const cartTotal = () => cartItems().reduce((s, x) => s + x.p.price * x.qty, 0) +
 async function init() {
   splash('store'); installButton($('#installBtn'));
   if (DEMO) $('#demo').classList.remove('hidden');
-  $('#brandMark').innerHTML = icon('logo');
-  $('#brandMark2').innerHTML = icon('logo');
-  $('#heroArt').innerHTML = HERO_ART;
+  $('#brandMark').innerHTML = logoImg();
+  $('#brandMark2').innerHTML = logoImg(true, 'foot-logo');
+  $('#heroArt').innerHTML = HERO_ART + logoImg(true, 'hero-logo');
   $('#grid').innerHTML = '<div class="skeleton"></div>'.repeat(6);
   renderCats();
   $('#search').addEventListener('input', e => { state.q = e.target.value.trim(); renderGrid(); });

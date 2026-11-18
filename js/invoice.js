@@ -9,6 +9,7 @@ function invoiceHTML(inv, st) {
   const cust = inv.customer_name || inv.customer_phone
     ? `<div><span>الزبون</span><b>${esc(inv.customer_name || '')}${inv.customer_phone ? ` <span class="n">${esc(normPhone(inv.customer_phone))}</span>` : ''}</b></div>` : '';
   return `<div class="inv-top">
+      <img class="inv-logo" src="img/logo-invoice.png" alt="">
       <div class="inv-shop">${esc(st.shop_name || 'المحل')}</div>
       <div class="inv-tag">عطور · أدهان · بخور · لبان عُماني</div>
       <div class="inv-tag">سمائل - سلطنة عُمان${st.whatsapp ? ` · واتساب <span class="n">${esc(st.whatsapp)}</span>` : ''}</div>

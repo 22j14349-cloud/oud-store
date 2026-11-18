@@ -2,6 +2,8 @@
 .login { position: relative; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; overflow: hidden; }
 .login-card { position: relative; z-index: 2; width: min(420px, 100%); padding: 30px 24px; text-align: center; }
 .login-mark { width: 84px; height: 84px; margin: 0 auto 10px; border-radius: 50%; display: grid; place-items: center; color: var(--gold); border: 1px solid var(--line); background: radial-gradient(circle, #3a2616, #140c07); }
+.login-mark:has(.logo-img) { width: auto; height: auto; border: 0; border-radius: 0; background: none; margin-bottom: 4px; }
+.login-mark .logo-img { width: 170px; height: auto; filter: drop-shadow(0 0 30px rgba(210, 168, 85, .3)); }
 .login-mark .ico { width: 56px; height: 56px; }
 .login h1 { font-size: 2rem; color: var(--gold-2); margin: 0; }
 .roles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 22px 0 18px; }
@@ -16,6 +18,7 @@
 .brand-s { display: flex; align-items: center; gap: 8px; color: var(--gold); min-width: 0; }
 .brand-s b { font-family: var(--display); font-size: 1.25rem; color: var(--gold-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand-s .ico { width: 32px; height: 32px; flex: none; }
+.brand-s .logo-img { width: 30px; height: auto; flex: none; }
 .abar-end { display: flex; gap: 6px; align-items: center; }
 @media (max-width: 560px) { .abar-end a { display: none; } #whoami { display: none; } }
 
@@ -160,6 +163,7 @@
 .inv { position: absolute; top: 0; left: -10000px; width: 560px; padding: 34px 34px 28px; background: #fff; color: #2a1a0e; font-family: var(--font); font-size: 15px; line-height: 1.6; }
 .inv .n { font-variant-numeric: tabular-nums; }
 .inv-top { text-align: center; padding-bottom: 16px; border-bottom: 2px solid #b8893a; }
+.inv-logo { width: 96px; height: auto; display: block; margin: 0 auto 6px; }
 .inv-shop { font-family: 'Amiri', serif; font-size: 34px; font-weight: 700; color: #8a5a1c; line-height: 1.3; }
 .inv-tag { color: #7a6650; font-size: 13px; }
 .inv-meta { display: grid; gap: 4px; margin: 16px 0; padding: 12px 14px; background: #faf5ec; border-radius: 10px; }
@@ -181,3 +185,4 @@
 .gal button:hover, .gal button:focus-visible { border-color: var(--gold); }
 .gal img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
 .gal span { display: block; padding: 4px 4px 6px; line-height: 1.3; }
+.login-mark:has(.logo-img) + h1 { display: none; }

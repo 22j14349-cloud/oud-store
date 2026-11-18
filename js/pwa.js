@@ -11,7 +11,7 @@ export function splash(kind) {
   try { name = localStorage.getItem('oud_shop_name') || name; } catch {}
   const el = document.createElement('div');
   el.className = 'splash';
-  el.innerHTML = `<div class="splash-in"><img src="img/${kind === 'admin' ? 'icon-admin' : 'icon'}-512.png" alt="">
+  el.innerHTML = `<div class="splash-in"><img src="img/logo.png" alt="">
     <h1>${name.replace(/[<>&]/g, '')}</h1><p>${kind === 'admin' ? 'المحاسبة والمبيعات' : 'عطور · أدهان · بخور · لبان عُماني'}</p></div>`;
   document.body.append(el);
   setTimeout(() => el.classList.add('out'), 1300);

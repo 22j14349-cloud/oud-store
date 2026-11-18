@@ -87,6 +87,8 @@ const ICONS = {
   resin: '<path d="M20 30c-6 2-8 9-4 13s11 2 12-4-3-11-8-9z"/><path d="M38 22c-5 0-8 6-6 10s9 4 11-1-0-9-5-9z"/><path d="M36 42c-5 1-6 8-2 11s10 0 10-5-3-7-8-6z"/><path d="M14 56h36"/>',
   logo: '<path d="M20 38h24l-3 9H23z"/><path d="M26 47v5h12v-5"/><path d="M19 56h26"/><path d="M23 38c0-4 4-6 9-6s9 2 9 6"/><path d="M32 27c-4-4 4-7 0-11s4-7 0-11"/><path d="M38 25c-3-3 3-5 0-8"/><path d="M26 25c-3-3 3-5 0-8"/>',
 };
+// شعار المحل: full = الشعار كاملاً مع الاسم، وإلا الرمز فقط
+export const logoImg = (full = false, cls = '') => `<img class="logo-img ${cls}" src="img/${full ? 'logo' : 'logo-mark'}.png" alt="العطاء الطيب" decoding="async">`;
 export const icon = (name, cls = '') =>
   `<svg class="ico ${cls}" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
